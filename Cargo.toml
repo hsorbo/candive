@@ -1,0 +1,13 @@
+[package]
+name = "candive"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[dev-dependencies]
+hex = "0.4.3"
+anyhow = "1.0.100"
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+socketcan = "3.5.0"
