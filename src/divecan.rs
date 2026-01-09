@@ -604,8 +604,8 @@ impl Msg {
             Co2Enabled(enabled) => {
                 b[0] = if *enabled { 1 } else { 0 };
             }
-            Co2 { unknown: status, pco2 } => {
-                b[0] = *status;
+            Co2 { unknown, pco2 } => {
+                b[0] = *unknown;
                 let v = pco2.raw().to_be_bytes();
                 b[1] = v[0];
                 b[2] = v[1];
