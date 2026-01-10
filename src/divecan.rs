@@ -82,17 +82,17 @@ impl CellsActive {
     pub fn new(cells: [bool; 3]) -> Self {
         Self((cells[0] as u8) | ((cells[1] as u8) << 1) | ((cells[2] as u8) << 2))
     }
-    
+
     pub fn as_array(&self) -> [bool; 3] {
         [(self.0 & 1) != 0, (self.0 & 2) != 0, (self.0 & 4) != 0]
     }
-    
+
     pub fn to_u8(&self) -> u8 {
         self.0
     }
-    
+
     pub fn from_u8(v: u8) -> Self {
-        Self(v & 0b111)  // Only use lower 3 bits
+        Self(v & 0b111) // Only use lower 3 bits
     }
 }
 
