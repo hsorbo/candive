@@ -232,7 +232,7 @@ pub enum DecodeError {
     DlcMismatch,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Alert {
     //TODO: in use, seen 1/2
     unknown: u8,
@@ -262,7 +262,7 @@ impl Alert {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Msg {
     Id {
         manufacturer: u8,
@@ -827,9 +827,49 @@ impl Msg {
     }
 }
 
+// Standard trait implementations for idiomatic conversion
+impl From<Msg> for DiveCanFrame {
+    fn from(msg: Msg) -> Self {
+        msg.to_frame()
+    }
+}
+
+impl From<&Msg> for DiveCanFrame {
+    fn from(msg: &Msg) -> Self {
+        msg.to_frame()
+    }
+}
+
+impl TryFrom<&DiveCanFrame> for Msg {
+    type Error = DecodeError;
+
+    fn try_from(frame: &DiveCanFrame) -> Result<Self, Self::Error> {
+        Msg::try_from_frame(frame)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn check_msg_size() {
+        use core::mem::size_of;
+        println!("Msg size: {} bytes", size_of::<Msg>());
+        println!("Alert size: {} bytes", size_of::<Alert>());
+
+        // Check specific variants
+        let id = Msg::Id {
+            manufacturer: 0,
+            unused: 0,
+            version: 0,
+        };
+        let uds = Msg::Uds([0; 8]);
+        let device_name = Msg::DeviceName([0; 8]);
+
+        // Msg should be Copy-able if it's small enough
+        println!("Is Msg Copy? {}", core::mem::needs_drop::<Msg>());
+    }
 
     #[test]
     fn dlc_matches_encoded_payload_length() {
@@ -973,6 +1013,36 @@ mod tests {
         };
         let m2 = Msg::try_from_frame(&m.to_frame()).unwrap();
         assert_eq!(m, m2);
+    }
+
+    #[test]
+    fn test_from_trait() {
+        let msg = Msg::Id {
+            manufacturer: 1,
+            unused: 0,
+            version: 0x42,
+        };
+
+        // Test From<Msg>
+        let frame: DiveCanFrame = msg.into();
+        assert_eq!(frame.kind(), 0x00);
+
+        // Test From<&Msg>
+        let frame2: DiveCanFrame = (&msg).into();
+        assert_eq!(frame2.kind(), 0x00);
+
+        // Msg is Copy, so we can still use it
+        assert_eq!(msg.kind(), 0x00);
+    }
+
+    #[test]
+    fn test_tryfrom_trait() {
+        let msg = Msg::Setpoint(0x70.into());
+        let frame = msg.to_frame();
+
+        // Test TryFrom<&DiveCanFrame>
+        let msg2: Msg = (&frame).try_into().unwrap();
+        assert_eq!(msg, msg2);
     }
 
     #[test]
