@@ -76,6 +76,27 @@ impl DiveCanFrame {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CellsActive(u8);
+
+impl CellsActive {
+    pub fn new(cells: [bool; 3]) -> Self {
+        Self((cells[0] as u8) | ((cells[1] as u8) << 1) | ((cells[2] as u8) << 2))
+    }
+    
+    pub fn as_array(&self) -> [bool; 3] {
+        [(self.0 & 1) != 0, (self.0 & 2) != 0, (self.0 & 4) != 0]
+    }
+    
+    pub fn to_u8(&self) -> u8 {
+        self.0
+    }
+    
+    pub fn from_u8(v: u8) -> Self {
+        Self(v & 0b111)  // Only use lower 3 bits
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Consensus {
     NotCalibrated,
     NoActiveCells,
@@ -313,7 +334,7 @@ pub enum Msg {
         cell_voltages: [Millivolt; 3],
         fo2: Fo2,
         pressure: Millibar,
-        cells_active: [bool; 3],
+        cells_active: CellsActive,
     },
 
     Ppo2CalibrationRequest {
@@ -362,7 +383,7 @@ pub enum Msg {
     Setpoint(PpO2Deci),
 
     CellStatus {
-        cells_active: [bool; 3],
+        cells_active: CellsActive,
         consensus: Consensus,
     },
 
@@ -488,14 +509,6 @@ impl Msg {
         }
     }
 
-    fn cells3_from_u8(v: &u8) -> [bool; 3] {
-        [(v & 0b001) != 0, (v & 0b010) != 0, (v & 0b100) != 0]
-    }
-
-    fn cells3_to_u8(x: &[bool; 3]) -> u8 {
-        (x[0] as u8) | ((x[1] as u8) << 1) | ((x[2] as u8) << 2)
-    }
-
     pub fn to_frame(&self) -> DiveCanFrame {
         let mut b = [0u8; 8];
         match self {
@@ -593,7 +606,7 @@ impl Msg {
                 let p = pressure.raw().to_be_bytes();
                 b[5] = p[0];
                 b[6] = p[1];
-                b[7] = Self::cells3_to_u8(cells_active);
+                b[7] = cells_active.to_u8();
             }
             Ppo2CalibrationRequest { fo2, pressure } => {
                 b[0] = *&fo2.raw();
@@ -656,7 +669,7 @@ impl Msg {
                 cells_active,
                 consensus,
             } => {
-                b[0] = Self::cells3_to_u8(cells_active);
+                b[0] = cells_active.to_u8();
                 b[1] = consensus.to_u8();
             }
             SoloStatus {
@@ -766,7 +779,7 @@ impl Msg {
                 cell_voltages: [data[1].into(), data[2].into(), data[3].into()],
                 fo2: data[4].into(),
                 pressure: u16::from_be_bytes([data[5], data[6]]).into(),
-                cells_active: Self::cells3_from_u8(&data[7]),
+                cells_active: CellsActive::from_u8(data[7]),
             }),
             0x13 => Ok(Ppo2CalibrationRequest {
                 fo2: data[0].into(),
@@ -803,7 +816,7 @@ impl Msg {
             0xC4 => Ok(TempProbeEnabled(data[0] != 0)),
             0xC9 => Ok(Setpoint(data[0].into())),
             0xCA => Ok(CellStatus {
-                cells_active: Self::cells3_from_u8(&data[0]),
+                cells_active: CellsActive::from_u8(data[0]),
                 consensus: Consensus::from_u8(data[1]),
             }),
 
@@ -932,7 +945,7 @@ mod tests {
                 cell_voltages: [0x10.into(), 0x20.into(), 0x30.into()],
                 fo2: 0x21.into(),
                 pressure: 1000.into(),
-                cells_active: [true, true, true],
+                cells_active: CellsActive::new([true, true, true]),
             },
             Msg::Co2Enabled(true),
             Msg::Co2 {
@@ -961,7 +974,7 @@ mod tests {
             Msg::TempProbeEnabled(true),
             Msg::Setpoint(0x42.into()),
             Msg::CellStatus {
-                cells_active: [true, true, true],
+                cells_active: CellsActive::new([true, true, true]),
                 consensus: Consensus::PpO2(0x55.into()),
             },
             Msg::SoloStatus {
@@ -1023,15 +1036,12 @@ mod tests {
             version: 0x42,
         };
 
-        // Test From<Msg>
         let frame: DiveCanFrame = msg.into();
         assert_eq!(frame.kind(), 0x00);
 
-        // Test From<&Msg>
         let frame2: DiveCanFrame = (&msg).into();
         assert_eq!(frame2.kind(), 0x00);
 
-        // Msg is Copy, so we can still use it
         assert_eq!(msg.kind(), 0x00);
     }
 
