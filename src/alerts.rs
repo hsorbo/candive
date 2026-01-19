@@ -62,24 +62,24 @@ pub enum SoloAlert {
     SoloReadSettingsFailed,
     SoloSpiFlashBusy,
 
-    IsotpSingleFrameSendFailed, // 0x1502
-    IsotpFlowControlTimeout,    // 0x1503
-    IsotpBusySingleFrame,       // 0x1504
-    IsotpBusyFirstFrame,        // 0x1505
+    IsotpSingleFrameSendFailed,
+    IsotpFlowControlTimeout,
+    IsotpBusySingleFrame,
+    IsotpBusyFirstFrame,
 
-    UdsTransferDownloadOutOfRange,     // 0x1581
-    UdsTransferDownloadProgFailed,     // 0x1582
-    UdsTransferIncorrectMessageLength, // 0x1583
-    UdsTransferDownloadWrongSequence,  // 0x1584
-    UdsTransferWrongBlockSequence,     // 0x1586
-    UdsTransferRequestSequenceError,   // 0x1587
-    UdsTransferExitFailed,             // 0x1588
-    UdsTransferNoBlocksTransferred,    // 0x1589
-    UdsTransferCrcVerifyFailed,        // 0x158A
-    UdsTransferCrcMismatch,            // 0x158B
-    UdsTransferVerifyProgFailed,       // 0x158C
-    UdsTransferUploadFailed,           // 0x158D
-    UdsTransferTimeout,                // 0x158E
+    UdsTransferDownloadOutOfRange,
+    UdsTransferDownloadProgFailed,
+    UdsTransferIncorrectMessageLength,
+    UdsTransferDownloadWrongSequence,
+    UdsTransferWrongBlockSequence,
+    UdsTransferRequestSequenceError,
+    UdsTransferExitFailed,
+    UdsTransferNoBlocksTransferred,
+    UdsTransferCrcVerifyFailed,
+    UdsTransferCrcMismatch,
+    UdsTransferVerifyProgFailed,
+    UdsTransferUploadFailed,
+    UdsTransferTimeout,
 }
 
 impl SoloAlert {

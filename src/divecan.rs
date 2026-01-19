@@ -476,7 +476,7 @@ impl Msg {
         }
     }
 
-    fn dlc_min_size(kind: u8) -> Option<u8> {
+    pub fn dlc_min_size(kind: u8) -> Option<u8> {
         match kind {
             0x00 => Some(3),
             0x01 => Some(8),
