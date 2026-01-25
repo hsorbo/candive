@@ -232,6 +232,7 @@ impl UserSettingPayload {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use hex::FromHex;
