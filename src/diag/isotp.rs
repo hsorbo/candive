@@ -197,24 +197,24 @@ impl IsoTpRx {
         &self.buf[..self.used]
     }
 
-    pub fn on_frame(&mut self, frame: &IsoTpFrame) -> Result<IsoTpRxEvent, IsoTpRxError> {
-        if frame.len == 0 || frame.len as usize > 8 {
+    pub fn on_frame(&mut self, data: &[u8]) -> Result<IsoTpRxEvent, IsoTpRxError> {
+        if data.is_empty() || data.len() > 8 {
             return Err(IsoTpRxError::LengthMismatch);
         }
 
-        let pci_type = IsoTpPciType::from_u8(frame.data[0]).ok_or(IsoTpRxError::UnknownPciType)?;
+        let pci_type = IsoTpPciType::from_u8(data[0]).ok_or(IsoTpRxError::UnknownPciType)?;
 
         if let IsoTpPciType::First = pci_type {}
 
         match pci_type {
-            IsoTpPciType::Single => self.handle_single(frame),
+            IsoTpPciType::Single => self.handle_single(data),
             IsoTpPciType::First => {
-                self.handle_first(frame)?;
+                self.handle_first(data)?;
                 Ok(IsoTpRxEvent::FlowControlRequired)
             }
-            IsoTpPciType::Consecutive => self.handle_consecutive(frame),
+            IsoTpPciType::Consecutive => self.handle_consecutive(data),
             IsoTpPciType::FlowControl => {
-                // Your TX doesn’t use FC, so treat this as unexpected.
+                // Your TX doesn't use FC, so treat this as unexpected.
                 Err(IsoTpRxError::UnexpectedFrameType {
                     expected: "Single/First/Consecutive",
                     got: IsoTpPciType::FlowControl,
@@ -223,14 +223,14 @@ impl IsoTpRx {
         }
     }
 
-    fn handle_single(&mut self, frame: &IsoTpFrame) -> Result<IsoTpRxEvent, IsoTpRxError> {
-        let sf_len = (frame.data[0] & 0x0F) as usize;
+    fn handle_single(&mut self, data: &[u8]) -> Result<IsoTpRxEvent, IsoTpRxError> {
+        let sf_len = (data[0] & 0x0F) as usize;
 
         if sf_len == 0 || sf_len > 7 {
             return Err(IsoTpRxError::LengthMismatch);
         }
 
-        if frame.len as usize != 1 + sf_len {
+        if data.len() != 1 + sf_len {
             return Err(IsoTpRxError::LengthMismatch);
         }
 
@@ -239,18 +239,18 @@ impl IsoTpRx {
         }
 
         self.reset();
-        self.buf[0..sf_len].copy_from_slice(&frame.data[1..1 + sf_len]);
+        self.buf[0..sf_len].copy_from_slice(&data[1..1 + sf_len]);
         self.used = sf_len;
         Ok(IsoTpRxEvent::Completed(self.used))
     }
 
-    fn handle_first(&mut self, frame: &IsoTpFrame) -> Result<Option<usize>, IsoTpRxError> {
-        if frame.len < 2 {
+    fn handle_first(&mut self, data: &[u8]) -> Result<Option<usize>, IsoTpRxError> {
+        if data.len() < 2 {
             return Err(IsoTpRxError::LengthMismatch);
         }
 
-        let hi = (frame.data[0] & 0x0F) as u16;
-        let lo = frame.data[1] as u16;
+        let hi = (data[0] & 0x0F) as u16;
+        let lo = data[1] as u16;
         let total_len = ((hi << 8) | lo) as usize;
 
         if total_len == 0 {
@@ -264,11 +264,11 @@ impl IsoTpRx {
 
         // Data starts at byte2
         let header_bytes = 2usize;
-        let available = (frame.len as usize).saturating_sub(header_bytes);
+        let available = data.len().saturating_sub(header_bytes);
         let copy_len = min(available, min(total_len, 6)); // FF can carry up to 6 data bytes.
 
         self.reset(); // Start a fresh multi-frame message.
-        self.buf[0..copy_len].copy_from_slice(&frame.data[header_bytes..header_bytes + copy_len]);
+        self.buf[0..copy_len].copy_from_slice(&data[header_bytes..header_bytes + copy_len]);
         self.used = copy_len;
         self.expected_len = Some(total_len);
         self.state = RxState::Receiving;
@@ -284,7 +284,7 @@ impl IsoTpRx {
         Ok(None)
     }
 
-    fn handle_consecutive(&mut self, frame: &IsoTpFrame) -> Result<IsoTpRxEvent, IsoTpRxError> {
+    fn handle_consecutive(&mut self, data: &[u8]) -> Result<IsoTpRxEvent, IsoTpRxError> {
         if self.state != RxState::Receiving {
             return Err(IsoTpRxError::UnexpectedFrameType {
                 expected: "First Frame before ConsecutiveFrame",
@@ -302,7 +302,7 @@ impl IsoTpRx {
             }
         };
 
-        let sn = frame.data[0] & 0x0F;
+        let sn = data[0] & 0x0F;
         if sn != self.next_sn {
             return Err(IsoTpRxError::SequenceError {
                 expected: self.next_sn,
@@ -311,7 +311,7 @@ impl IsoTpRx {
         }
 
         let header_bytes = 1usize;
-        let payload_len = (frame.len as usize).saturating_sub(header_bytes);
+        let payload_len = data.len().saturating_sub(header_bytes);
 
         if self.used >= expected_len {
             return Err(IsoTpRxError::Overflow);
@@ -326,7 +326,7 @@ impl IsoTpRx {
         }
 
         self.buf[self.used..self.used + copy_len]
-            .copy_from_slice(&frame.data[header_bytes..header_bytes + copy_len]);
+            .copy_from_slice(&data[header_bytes..header_bytes + copy_len]);
         self.used += copy_len;
 
         self.next_sn = (self.next_sn + 1) & 0x0F;
