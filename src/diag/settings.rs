@@ -232,15 +232,12 @@ impl UserSettingPayload {
     }
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diag::uds::{ReadByIdentifierCodec, ReadByIdentifierResp, ServiceCodec};
     use hex::FromHex;
 
     #[test]
     fn info_roundtrip_to_uds() {
-        let ident = UserSettingDid::Info { index: 0 };
         let payload = UserSettingPayload::Info {
             name: *b"SOLO_SPEED",
             editable: true,
@@ -250,13 +247,9 @@ mod tests {
         let mut data: [u8; 100] = [0; 100];
         let len = payload.encode(&mut data);
 
-        let resp = ReadByIdentifierResp {
-            did: ident.to_did(),
-            data: &data[..len],
-        };
-        let pdu = ReadByIdentifierCodec::encode_response(&resp);
-        let bytes: Vec<u8> = Vec::from_hex("00629110534F4C4F5F53504545440101").unwrap();
-        assert_eq!(pdu.as_slice(), &bytes[..]);
+        //00629110534F4C4F5F53504545440101
+        let bytes: Vec<u8> = Vec::from_hex("534F4C4F5F53504545440101").unwrap();
+        assert_eq!(&data[..len], &bytes);
     }
 
     #[test]
@@ -264,17 +257,8 @@ mod tests {
         let payload = UserSettingPayload::Enum(*b"PID_5SEC");
         let mut data: [u8; 100] = [0; 100];
         let len = payload.encode(&mut data);
-
-        let resp = ReadByIdentifierResp {
-            did: UserSettingDid::Enum {
-                enum_index: 1,
-                index: 0,
-            }
-            .to_did(),
-            data: &data[..len],
-        };
-        let pdu = ReadByIdentifierCodec::encode_response(&resp);
-        let bytes: Vec<u8> = Vec::from_hex("006291515049445f35534543").unwrap();
-        assert_eq!(pdu.as_slice(), &bytes[..]);
+        //006291515049445f35534543
+        let bytes: Vec<u8> = Vec::from_hex("5049445f35534543").unwrap();
+        assert_eq!(&data[..len], &bytes);
     }
 }

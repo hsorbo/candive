@@ -4,4 +4,6 @@ pub mod alerts;
 pub mod diag;
 pub mod divecan;
 pub mod fmt;
+#[cfg(feature = "uds")]
+pub mod uds;
 pub mod units;
