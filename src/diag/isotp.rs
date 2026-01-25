@@ -2,8 +2,14 @@
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IsoTpFrame {
-    pub len: u8,
-    pub data: [u8; 8],
+    len: u8,
+    data: [u8; 8],
+}
+
+impl IsoTpFrame {
+    pub fn as_slice(&self) -> &[u8] {
+        &self.data[..self.len as usize]
+    }
 }
 
 pub struct IsoTpTx<'a> {
