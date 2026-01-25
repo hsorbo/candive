@@ -349,7 +349,7 @@ impl TryFrom<&[u8]> for SoloO2CellCalibrationDid {
         let arr: [u8; 15] = bytes
             .try_into()
             .map_err(|_| DidDecodeError::BadLength { expected: 15 })?;
-        
+
         let mut calibration_valid = [false; 3];
         for i in 0..3 {
             calibration_valid[i] = match arr[12 + i] {
@@ -358,7 +358,7 @@ impl TryFrom<&[u8]> for SoloO2CellCalibrationDid {
                 _ => return Err(DidDecodeError::InvalidFormat),
             };
         }
-        
+
         Ok(Self {
             o2_calibrations: [
                 u32::from_be_bytes([arr[0], arr[1], arr[2], arr[3]]),

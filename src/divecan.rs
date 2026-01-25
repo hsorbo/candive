@@ -315,7 +315,10 @@ pub enum Msg {
     },
 
     //UDS Diagnostic
-    Uds([u8; 8]),
+    Uds {
+        dlc: u8,
+        data: [u8; 8],
+    },
 
     TankPressure {
         cylinder_index: u8,
@@ -421,7 +424,7 @@ impl Msg {
             CellPpo2(..) => 0x04,
             OboeStatus { .. } => 0x07,
             AmbientPressure { .. } => 0x08,
-            Uds(..) => 0x0A,
+            Uds { .. } => 0x0A,
             TankPressure { .. } => 0x0B,
             Nop => 0x10,
             CellVoltages { .. } => 0x11,
@@ -471,7 +474,7 @@ impl Msg {
             BusInit { .. } => 3,
             Undocumented30 { .. } => 3,
             Nop => 8,
-            Uds(..) => 8,
+            Uds { dlc, .. } => *dlc,
             Serial(..) => 8,
         }
     }
@@ -485,7 +488,7 @@ impl Msg {
             0x04 => Some(4),
             0x07 => Some(5),
             0x08 => Some(5),
-            0x0A => Some(8),
+            0x0A => Some(1),
             0x0B => Some(3),
             0x10 => Some(8),
             0x11 => Some(7),
@@ -565,7 +568,10 @@ impl Msg {
                 b[3] = c[1];
                 b[4] = if *depth_comp { 1 } else { 0 };
             }
-            Uds(raw) => b.copy_from_slice(raw),
+            Msg::Uds { dlc, data } => {
+                let len = *dlc as usize;
+                b[..len].copy_from_slice(&data[..len]);
+            }
             TankPressure {
                 cylinder_index: cylinder,
                 pressure: pressure_decibar,
@@ -760,7 +766,15 @@ impl Msg {
                 current: u16::from_be_bytes([data[2], data[3]]).into(),
                 depth_comp: data[4] != 0,
             }),
-            0x0A => Ok(Uds(data)),
+            0x0A => {
+                let len = frame.dlc as usize;
+                let mut d = [0u8; 8];
+                d[..len].copy_from_slice(&data[..len]);
+                Ok(Msg::Uds {
+                    dlc: frame.dlc,
+                    data: d,
+                })
+            }
             0x0B => Ok(TankPressure {
                 cylinder_index: data[0],
                 pressure: u16::from_be_bytes([data[1], data[2]]).into(),
@@ -866,25 +880,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn check_msg_size() {
-        use core::mem::size_of;
-        println!("Msg size: {} bytes", size_of::<Msg>());
-        println!("Alert size: {} bytes", size_of::<Alert>());
-
-        // Check specific variants
-        let id = Msg::Id {
-            manufacturer: 0,
-            unused: 0,
-            version: 0,
-        };
-        let uds = Msg::Uds([0; 8]);
-        let device_name = Msg::DeviceName([0; 8]);
-
-        // Msg should be Copy-able if it's small enough
-        println!("Is Msg Copy? {}", core::mem::needs_drop::<Msg>());
-    }
-
-    #[test]
     fn dlc_matches_encoded_payload_length() {
         use super::*;
 
@@ -926,7 +921,10 @@ mod tests {
                 current: 1245.into(),
                 depth_comp: true,
             },
-            Msg::Uds([1, 2, 3, 4, 5, 6, 7, 8]),
+            Msg::Uds {
+                data: [1, 2, 3, 4, 0, 0, 0, 0],
+                dlc: 4,
+            },
             Msg::TankPressure {
                 cylinder_index: 0x02,
                 pressure: 0x1234.into(),
