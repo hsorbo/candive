@@ -1,4 +1,5 @@
-/// Very limited, very broken, very vibe-coded ISO-TP TX segmenter and reassembler, scheduled for removal.
+// Very limited, very broken, very vibe-coded ISO-TP TX segmenter and reassembler, scheduled for removal.
+// This exisits as Shearwater computers sends 0xFF as sender address in CF so breaks conforming implementations
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IsoTpFrame {

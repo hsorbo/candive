@@ -1,34 +1,37 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DidDecodeError {
     TooShort { needed: usize },
-    BadLength { expected: usize },
+    TooLong { max: usize },
     InvalidFormat,
+    InvalidEnumValue { value: u8 },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DidAccess {
-    /// Read-only (RDBI only)
-    ReadOnly,
-    /// Write-only (WDBI only)
-    WriteOnly,
-    /// Read and write (RDBI and WDBI)
-    ReadWrite,
+impl DidDecodeError {
+    pub fn length_mismatch(actual: usize, expected: usize) -> Self {
+        if actual < expected {
+            DidDecodeError::TooShort { needed: expected }
+        } else {
+            DidDecodeError::TooLong { max: expected }
+        }
+    }
 }
 
 pub trait DataIdentifier: for<'a> TryFrom<&'a [u8], Error = DidDecodeError> {
     const DID: u16;
-    const ACCESS: DidAccess;
     type Bytes: AsRef<[u8]> + Copy;
 
     fn to_bytes(&self) -> Self::Bytes;
 }
+
+pub trait ReadableDid: DataIdentifier {}
+
+pub trait WritableDid: DataIdentifier {}
 
 macro_rules! define_byte_array_did {
     (
         $(#[$meta:meta])*
         $name:ident,
         did: $did:expr,
-        access: $access:expr,
         len: $len:expr,
         field: $field:ident
     ) => {
@@ -40,7 +43,6 @@ macro_rules! define_byte_array_did {
 
         impl DataIdentifier for $name {
             const DID: u16 = $did;
-            const ACCESS: DidAccess = $access;
             type Bytes = [u8; $len];
 
             fn to_bytes(&self) -> Self::Bytes {
@@ -53,7 +55,7 @@ macro_rules! define_byte_array_did {
 
             fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
                 if bytes.len() != $len {
-                    return Err(DidDecodeError::BadLength { expected: $len });
+                    return Err(DidDecodeError::length_mismatch(bytes.len(), $len));
                 }
                 let mut $field = [0u8; $len];
                 $field.copy_from_slice(bytes);
@@ -72,14 +74,16 @@ pub enum PPO2ControlMode {
     FiveSec = 3,
 }
 
-impl PPO2ControlMode {
-    pub fn from_u8(value: u8) -> Option<Self> {
+impl TryFrom<u8> for PPO2ControlMode {
+    type Error = DidDecodeError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Some(Self::UserSelect),
-            1 => Some(Self::Manual),
-            2 => Some(Self::OneSec),
-            3 => Some(Self::FiveSec),
-            _ => None,
+            0 => Ok(Self::UserSelect),
+            1 => Ok(Self::Manual),
+            2 => Ok(Self::OneSec),
+            3 => Ok(Self::FiveSec),
+            _ => Err(DidDecodeError::InvalidEnumValue { value }),
         }
     }
 }
@@ -93,12 +97,14 @@ pub enum CalibrationProcedure {
     Monitored = 1,
 }
 
-impl CalibrationProcedure {
-    pub fn from_u8(value: u8) -> Option<Self> {
+impl TryFrom<u8> for CalibrationProcedure {
+    type Error = DidDecodeError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Some(Self::Direct),
-            1 => Some(Self::Monitored),
-            _ => None,
+            0 => Ok(Self::Direct),
+            1 => Ok(Self::Monitored),
+            _ => Err(DidDecodeError::InvalidEnumValue { value }),
         }
     }
 }
@@ -129,7 +135,6 @@ pub struct SoloConfigDid {
 
 impl DataIdentifier for SoloConfigDid {
     const DID: u16 = 0x820b;
-    const ACCESS: DidAccess = DidAccess::ReadOnly;
     type Bytes = [u8; 4];
 
     fn to_bytes(&self) -> Self::Bytes {
@@ -184,7 +189,7 @@ impl TryFrom<&[u8]> for SoloConfigDid {
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         let arr: [u8; 4] = bytes
             .try_into()
-            .map_err(|_| DidDecodeError::BadLength { expected: 4 })?;
+            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 4))?;
         let config_word = u32::from_be_bytes(arr);
 
         let calibration_procedure = if (config_word & 0x3) == 1 {
@@ -192,8 +197,10 @@ impl TryFrom<&[u8]> for SoloConfigDid {
         } else {
             CalibrationProcedure::Direct
         };
-        let ppo2_control_mode = PPO2ControlMode::from_u8(((config_word >> 2) & 0x3) as u8)
-            .ok_or(DidDecodeError::InvalidFormat)?;
+
+        let ppo2_control_value = ((config_word >> 2) & 0x3) as u8;
+        let ppo2_control_mode = PPO2ControlMode::try_from(ppo2_control_value)?;
+
         let cell_averaging_3cell = ((config_word >> 4) & 0x3) == 1;
         let depth_compensation_enabled = ((config_word >> 6) & 0x3) == 1;
 
@@ -245,7 +252,6 @@ pub struct FirmwareDownloadInfoDid {
 
 impl DataIdentifier for FirmwareDownloadInfoDid {
     const DID: u16 = 0x8020;
-    const ACCESS: DidAccess = DidAccess::ReadOnly;
     type Bytes = [u8; 9];
 
     fn to_bytes(&self) -> Self::Bytes {
@@ -262,7 +268,7 @@ impl TryFrom<&[u8]> for FirmwareDownloadInfoDid {
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         if bytes.len() != 9 {
-            return Err(DidDecodeError::BadLength { expected: 9 });
+            return Err(DidDecodeError::length_mismatch(bytes.len(), 9));
         }
 
         let supported = bytes[0] != 0;
@@ -286,7 +292,6 @@ pub struct LogUploadInfoDid {
 
 impl DataIdentifier for LogUploadInfoDid {
     const DID: u16 = 0x8021;
-    const ACCESS: DidAccess = DidAccess::ReadOnly;
     type Bytes = [u8; 9];
 
     fn to_bytes(&self) -> Self::Bytes {
@@ -303,7 +308,7 @@ impl TryFrom<&[u8]> for LogUploadInfoDid {
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         if bytes.len() != 9 {
-            return Err(DidDecodeError::BadLength { expected: 9 });
+            return Err(DidDecodeError::length_mismatch(bytes.len(), 9));
         }
 
         let supported = bytes[0] != 0;
@@ -327,7 +332,6 @@ pub struct SoloO2CellCalibrationDid {
 
 impl DataIdentifier for SoloO2CellCalibrationDid {
     const DID: u16 = 0x8203;
-    const ACCESS: DidAccess = DidAccess::ReadOnly;
     type Bytes = [u8; 15];
 
     fn to_bytes(&self) -> Self::Bytes {
@@ -348,14 +352,14 @@ impl TryFrom<&[u8]> for SoloO2CellCalibrationDid {
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         let arr: [u8; 15] = bytes
             .try_into()
-            .map_err(|_| DidDecodeError::BadLength { expected: 15 })?;
+            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 15))?;
 
         let mut calibration_valid = [false; 3];
         for i in 0..3 {
             calibration_valid[i] = match arr[12 + i] {
                 0 => false,
                 1 => true,
-                _ => return Err(DidDecodeError::InvalidFormat),
+                other => return Err(DidDecodeError::InvalidEnumValue { value: other }),
             };
         }
 
@@ -389,7 +393,6 @@ impl SoloAdcVrefCalibrationDid {
 
 impl DataIdentifier for SoloAdcVrefCalibrationDid {
     const DID: u16 = 0x820a;
-    const ACCESS: DidAccess = DidAccess::ReadWrite;
     type Bytes = [u8; 4];
 
     fn to_bytes(&self) -> Self::Bytes {
@@ -403,7 +406,7 @@ impl TryFrom<&[u8]> for SoloAdcVrefCalibrationDid {
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         let arr: [u8; 4] = bytes
             .try_into()
-            .map_err(|_| DidDecodeError::BadLength { expected: 4 })?;
+            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 4))?;
         let value = u32::from_be_bytes(arr);
         Ok(Self::new(value))
     }
@@ -416,7 +419,6 @@ pub struct SoloO2CellFactoryCalibrationDid {
 
 impl DataIdentifier for SoloO2CellFactoryCalibrationDid {
     const DID: u16 = 0x8205;
-    const ACCESS: DidAccess = DidAccess::ReadOnly;
     type Bytes = [u8; 12];
 
     fn to_bytes(&self) -> Self::Bytes {
@@ -434,7 +436,7 @@ impl TryFrom<&[u8]> for SoloO2CellFactoryCalibrationDid {
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         let arr: [u8; 12] = bytes
             .try_into()
-            .map_err(|_| DidDecodeError::BadLength { expected: 12 })?;
+            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 12))?;
         Ok(Self {
             cells: [
                 u32::from_be_bytes([arr[0], arr[1], arr[2], arr[3]]),
@@ -452,7 +454,6 @@ pub struct FirmwareCrcDid {
 
 impl DataIdentifier for FirmwareCrcDid {
     const DID: u16 = 0x8209;
-    const ACCESS: DidAccess = DidAccess::ReadOnly;
     type Bytes = [u8; 4];
 
     fn to_bytes(&self) -> Self::Bytes {
@@ -466,7 +467,7 @@ impl TryFrom<&[u8]> for FirmwareCrcDid {
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         let arr: [u8; 4] = bytes
             .try_into()
-            .map_err(|_| DidDecodeError::BadLength { expected: 4 })?;
+            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 4))?;
         let crc = u32::from_be_bytes(arr);
         Ok(FirmwareCrcDid { crc })
     }
@@ -475,7 +476,6 @@ impl TryFrom<&[u8]> for FirmwareCrcDid {
 define_byte_array_did!(
     SerialStringDid,
     did: 0x8010,
-    access: DidAccess::ReadOnly,
     len: 8,
     field: serial_ascii
 );
@@ -483,36 +483,46 @@ define_byte_array_did!(
 define_byte_array_did!(
     VersionStringDid,
     did: 0x8011,
-    access: DidAccess::ReadOnly,
     len: 3,
-    field: firmare_version_ascii
+    field: firmware_version_ascii
 );
 
 define_byte_array_did!(
     SerialDid,
     did: 0x8200,
-    access: DidAccess::ReadWrite,
     len: 4,
     field: serial
 );
 
 define_byte_array_did!(
-    // The actual DeviceId from CPU registers
     DeviceIdDid,
     did: 0x8201,
-    access: DidAccess::ReadOnly,
     len: 12,
     field: device_id
 );
 
 define_byte_array_did!(
-    // DeviceId from settings, not actual
     SoloEncryptedConfigAndIdDid,
     did: 0x8202,
-    access: DidAccess::ReadWrite,
     len: 16,
     field: unknown
 );
+
+impl ReadableDid for SoloConfigDid {}
+impl ReadableDid for FirmwareDownloadInfoDid {}
+impl ReadableDid for LogUploadInfoDid {}
+impl ReadableDid for SoloO2CellCalibrationDid {}
+impl ReadableDid for SoloAdcVrefCalibrationDid {}
+impl WritableDid for SoloAdcVrefCalibrationDid {}
+impl ReadableDid for SoloO2CellFactoryCalibrationDid {}
+impl ReadableDid for FirmwareCrcDid {}
+impl ReadableDid for SerialStringDid {}
+impl ReadableDid for VersionStringDid {}
+impl ReadableDid for SerialDid {}
+impl WritableDid for SerialDid {}
+impl ReadableDid for DeviceIdDid {}
+impl ReadableDid for SoloEncryptedConfigAndIdDid {}
+impl WritableDid for SoloEncryptedConfigAndIdDid {}
 
 #[cfg(test)]
 mod tests {
@@ -535,7 +545,7 @@ mod tests {
         let result = VersionStringDid::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
 
-        assert_eq!(&result.firmare_version_ascii, b"v12");
+        assert_eq!(&result.firmware_version_ascii, b"v12");
     }
 
     #[test]

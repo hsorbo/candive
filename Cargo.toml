@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["diagnostics"]
+default = ["diagnostics", "uds"]
 diagnostics = []
 uds = []
 
@@ -13,6 +13,10 @@ uds = []
 [dev-dependencies]
 hex = "0.4.3"
 anyhow = "1.0.100"
+des = "0.8.1"
+clap = { version = "4.5", features = ["derive"] }
+indicatif = "0.17"
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 socketcan = "3.5.0"
+socketcan-isotp = "1.0"
