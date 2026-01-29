@@ -118,7 +118,7 @@ pub enum CellMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SoloConfigDid {
+pub struct SoloControlConfig {
     pub calibration_procedure: CalibrationProcedure,
     pub ppo2_control_mode: PPO2ControlMode,
     pub cell_mode: CellMode,
@@ -133,7 +133,7 @@ pub struct SoloConfigDid {
     pub reserved_bits_24_31: u8,
 }
 
-impl DataIdentifier for SoloConfigDid {
+impl DataIdentifier for SoloControlConfig {
     const DID: u16 = 0x820b;
     type Bytes = [u8; 4];
 
@@ -183,7 +183,7 @@ impl DataIdentifier for SoloConfigDid {
     }
 }
 
-impl TryFrom<&[u8]> for SoloConfigDid {
+impl TryFrom<&[u8]> for SoloControlConfig {
     type Error = DidDecodeError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
@@ -228,7 +228,7 @@ impl TryFrom<&[u8]> for SoloConfigDid {
         let reserved_bits_20_21 = ((config_word >> 20) & 0x3) as u8;
         let reserved_bits_24_31 = ((config_word >> 24) & 0xFF) as u8;
 
-        Ok(SoloConfigDid {
+        Ok(SoloControlConfig {
             calibration_procedure,
             ppo2_control_mode,
             cell_mode,
@@ -244,13 +244,13 @@ impl TryFrom<&[u8]> for SoloConfigDid {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FirmwareDownloadInfoDid {
+pub struct FirmwareDownloadCapability {
     pub supported: bool,
     pub address: u32,
     pub max_size: u32,
 }
 
-impl DataIdentifier for FirmwareDownloadInfoDid {
+impl DataIdentifier for FirmwareDownloadCapability {
     const DID: u16 = 0x8020;
     type Bytes = [u8; 9];
 
@@ -263,7 +263,7 @@ impl DataIdentifier for FirmwareDownloadInfoDid {
     }
 }
 
-impl TryFrom<&[u8]> for FirmwareDownloadInfoDid {
+impl TryFrom<&[u8]> for FirmwareDownloadCapability {
     type Error = DidDecodeError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
@@ -275,7 +275,7 @@ impl TryFrom<&[u8]> for FirmwareDownloadInfoDid {
         let address = u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
         let max_size = u32::from_be_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
 
-        Ok(FirmwareDownloadInfoDid {
+        Ok(FirmwareDownloadCapability {
             supported,
             address,
             max_size,
@@ -284,13 +284,13 @@ impl TryFrom<&[u8]> for FirmwareDownloadInfoDid {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LogUploadInfoDid {
+pub struct LogUploadCapability {
     pub supported: bool,
     pub address: u32,
     pub size: u32,
 }
 
-impl DataIdentifier for LogUploadInfoDid {
+impl DataIdentifier for LogUploadCapability {
     const DID: u16 = 0x8021;
     type Bytes = [u8; 9];
 
@@ -303,7 +303,7 @@ impl DataIdentifier for LogUploadInfoDid {
     }
 }
 
-impl TryFrom<&[u8]> for LogUploadInfoDid {
+impl TryFrom<&[u8]> for LogUploadCapability {
     type Error = DidDecodeError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
@@ -315,7 +315,7 @@ impl TryFrom<&[u8]> for LogUploadInfoDid {
         let address = u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
         let size = u32::from_be_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
 
-        Ok(LogUploadInfoDid {
+        Ok(LogUploadCapability {
             supported,
             address,
             size,
@@ -325,12 +325,12 @@ impl TryFrom<&[u8]> for LogUploadInfoDid {
 
 /// O2 cell runtime calibration data (DID 0x8203)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SoloO2CellCalibrationDid {
+pub struct SoloCellCalibrationState {
     pub o2_calibrations: [u32; 3],
     pub calibration_valid: [bool; 3],
 }
 
-impl DataIdentifier for SoloO2CellCalibrationDid {
+impl DataIdentifier for SoloCellCalibrationState {
     const DID: u16 = 0x8203;
     type Bytes = [u8; 15];
 
@@ -346,7 +346,7 @@ impl DataIdentifier for SoloO2CellCalibrationDid {
     }
 }
 
-impl TryFrom<&[u8]> for SoloO2CellCalibrationDid {
+impl TryFrom<&[u8]> for SoloCellCalibrationState {
     type Error = DidDecodeError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
@@ -376,9 +376,9 @@ impl TryFrom<&[u8]> for SoloO2CellCalibrationDid {
 
 /// ADC voltage reference calibration value
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SoloAdcVrefCalibrationDid(pub u32);
+pub struct SoloVoltageCalibration(pub u32);
 
-impl SoloAdcVrefCalibrationDid {
+impl SoloVoltageCalibration {
     pub const MIN: u32 = 0xa64;
     pub const MAX: u32 = 0xb7c;
 
@@ -391,7 +391,7 @@ impl SoloAdcVrefCalibrationDid {
     }
 }
 
-impl DataIdentifier for SoloAdcVrefCalibrationDid {
+impl DataIdentifier for SoloVoltageCalibration {
     const DID: u16 = 0x820a;
     type Bytes = [u8; 4];
 
@@ -400,7 +400,7 @@ impl DataIdentifier for SoloAdcVrefCalibrationDid {
     }
 }
 
-impl TryFrom<&[u8]> for SoloAdcVrefCalibrationDid {
+impl TryFrom<&[u8]> for SoloVoltageCalibration {
     type Error = DidDecodeError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
@@ -413,11 +413,73 @@ impl TryFrom<&[u8]> for SoloAdcVrefCalibrationDid {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SoloO2CellFactoryCalibrationDid {
+pub enum CalibrationError {
+    O2OutOfRange(u32),
+    PressureOutOfRange(u32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SoloCellCalibrationRequest {
+    /// O2 percentage  >= 70 and <= 100
+    pub o2_percent: u32,
+    /// Atmospheric pressure in millibars  >= 600 & <= 1050
+    pub atmospheric_pressure_mbar: u32,
+}
+
+impl SoloCellCalibrationRequest {
+    pub fn try_new(
+        o2_percent: u32,
+        atmospheric_pressure_mbar: u32,
+    ) -> Result<Self, CalibrationError> {
+        if !(70..=100).contains(&o2_percent) {
+            return Err(CalibrationError::O2OutOfRange(o2_percent));
+        }
+
+        if !(600..=1050).contains(&atmospheric_pressure_mbar) {
+            return Err(CalibrationError::PressureOutOfRange(
+                atmospheric_pressure_mbar,
+            ));
+        }
+
+        Ok(Self {
+            o2_percent,
+            atmospheric_pressure_mbar,
+        })
+    }
+}
+
+impl DataIdentifier for SoloCellCalibrationRequest {
+    const DID: u16 = 0x8204;
+    type Bytes = [u8; 8];
+
+    fn to_bytes(&self) -> Self::Bytes {
+        let mut result = [0u8; 8];
+        result[0..4].copy_from_slice(&self.o2_percent.to_be_bytes());
+        result[4..8].copy_from_slice(&self.atmospheric_pressure_mbar.to_be_bytes());
+        result
+    }
+}
+
+impl TryFrom<&[u8]> for SoloCellCalibrationRequest {
+    type Error = DidDecodeError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        let arr: [u8; 8] = bytes
+            .try_into()
+            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 8))?;
+        Ok(Self {
+            o2_percent: u32::from_be_bytes([arr[0], arr[1], arr[2], arr[3]]),
+            atmospheric_pressure_mbar: u32::from_be_bytes([arr[4], arr[5], arr[6], arr[7]]),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SoloCellZeroOffsets {
     pub cells: [u32; 3],
 }
 
-impl DataIdentifier for SoloO2CellFactoryCalibrationDid {
+impl DataIdentifier for SoloCellZeroOffsets {
     const DID: u16 = 0x8205;
     type Bytes = [u8; 12];
 
@@ -430,7 +492,7 @@ impl DataIdentifier for SoloO2CellFactoryCalibrationDid {
     }
 }
 
-impl TryFrom<&[u8]> for SoloO2CellFactoryCalibrationDid {
+impl TryFrom<&[u8]> for SoloCellZeroOffsets {
     type Error = DidDecodeError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
@@ -447,12 +509,40 @@ impl TryFrom<&[u8]> for SoloO2CellFactoryCalibrationDid {
     }
 }
 
+/// Calibrates all 3 O2 cells by computing zero-point offset corrections
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SoloCellZeroOffsetCalibrationRequest {
+    pub expected_adc_value: u32,
+}
+
+impl DataIdentifier for SoloCellZeroOffsetCalibrationRequest {
+    const DID: u16 = 0x8206;
+    type Bytes = [u8; 4];
+
+    fn to_bytes(&self) -> Self::Bytes {
+        self.expected_adc_value.to_be_bytes()
+    }
+}
+
+impl TryFrom<&[u8]> for SoloCellZeroOffsetCalibrationRequest {
+    type Error = DidDecodeError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        let arr: [u8; 4] = bytes
+            .try_into()
+            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 4))?;
+        Ok(Self {
+            expected_adc_value: u32::from_be_bytes(arr),
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FirmwareCrcDid {
+pub struct FirmwareCrc {
     pub crc: u32,
 }
 
-impl DataIdentifier for FirmwareCrcDid {
+impl DataIdentifier for FirmwareCrc {
     const DID: u16 = 0x8209;
     type Bytes = [u8; 4];
 
@@ -461,7 +551,7 @@ impl DataIdentifier for FirmwareCrcDid {
     }
 }
 
-impl TryFrom<&[u8]> for FirmwareCrcDid {
+impl TryFrom<&[u8]> for FirmwareCrc {
     type Error = DidDecodeError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
@@ -469,60 +559,62 @@ impl TryFrom<&[u8]> for FirmwareCrcDid {
             .try_into()
             .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 4))?;
         let crc = u32::from_be_bytes(arr);
-        Ok(FirmwareCrcDid { crc })
+        Ok(FirmwareCrc { crc })
     }
 }
 
 define_byte_array_did!(
-    SerialStringDid,
+    SerialNumberAscii,
     did: 0x8010,
     len: 8,
     field: serial_ascii
 );
 
 define_byte_array_did!(
-    VersionStringDid,
+    FirmwareVersionAscii,
     did: 0x8011,
     len: 3,
     field: firmware_version_ascii
 );
 
 define_byte_array_did!(
-    SerialDid,
+    SerialNumber,
     did: 0x8200,
     len: 4,
     field: serial
 );
 
 define_byte_array_did!(
-    DeviceIdDid,
+    DeviceId,
     did: 0x8201,
     len: 12,
     field: device_id
 );
 
 define_byte_array_did!(
-    SoloEncryptedConfigAndIdDid,
+    EncryptedConfigBlob,
     did: 0x8202,
     len: 16,
     field: unknown
 );
 
-impl ReadableDid for SoloConfigDid {}
-impl ReadableDid for FirmwareDownloadInfoDid {}
-impl ReadableDid for LogUploadInfoDid {}
-impl ReadableDid for SoloO2CellCalibrationDid {}
-impl ReadableDid for SoloAdcVrefCalibrationDid {}
-impl WritableDid for SoloAdcVrefCalibrationDid {}
-impl ReadableDid for SoloO2CellFactoryCalibrationDid {}
-impl ReadableDid for FirmwareCrcDid {}
-impl ReadableDid for SerialStringDid {}
-impl ReadableDid for VersionStringDid {}
-impl ReadableDid for SerialDid {}
-impl WritableDid for SerialDid {}
-impl ReadableDid for DeviceIdDid {}
-impl ReadableDid for SoloEncryptedConfigAndIdDid {}
-impl WritableDid for SoloEncryptedConfigAndIdDid {}
+impl ReadableDid for SoloControlConfig {}
+impl ReadableDid for FirmwareDownloadCapability {}
+impl ReadableDid for LogUploadCapability {}
+impl ReadableDid for SoloCellCalibrationState {}
+impl WritableDid for SoloCellCalibrationRequest {}
+impl ReadableDid for SoloVoltageCalibration {}
+impl WritableDid for SoloVoltageCalibration {}
+impl ReadableDid for SoloCellZeroOffsets {}
+impl WritableDid for SoloCellZeroOffsetCalibrationRequest {}
+impl ReadableDid for FirmwareCrc {}
+impl ReadableDid for SerialNumberAscii {}
+impl ReadableDid for FirmwareVersionAscii {}
+impl ReadableDid for SerialNumber {}
+impl WritableDid for SerialNumber {}
+impl ReadableDid for DeviceId {}
+impl ReadableDid for EncryptedConfigBlob {}
+impl WritableDid for EncryptedConfigBlob {}
 
 #[cfg(test)]
 mod tests {
@@ -532,7 +624,7 @@ mod tests {
     fn test_0x8010() {
         // 0x8010 -> 4130303544303037 = ASCII "A005D007"
         let input = hex::decode("4130303544303037").unwrap();
-        let result = SerialStringDid::try_from(input.as_slice()).unwrap();
+        let result = SerialNumberAscii::try_from(input.as_slice()).unwrap();
         assert_eq!(result.to_bytes(), result.serial_ascii);
 
         assert_eq!(&result.serial_ascii, b"A005D007");
@@ -542,7 +634,7 @@ mod tests {
     fn test_0x8011() {
         // 0x8011 -> 763132 = ASCII "v12"
         let input = hex::decode("763132").unwrap();
-        let result = VersionStringDid::try_from(input.as_slice()).unwrap();
+        let result = FirmwareVersionAscii::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
 
         assert_eq!(&result.firmware_version_ascii, b"v12");
@@ -552,7 +644,7 @@ mod tests {
     fn test_0x8020() {
         // 0x8020 -> 010800000000007C00
         let input = hex::decode("010800000000007C00").unwrap();
-        let result = FirmwareDownloadInfoDid::try_from(input.as_slice()).unwrap();
+        let result = FirmwareDownloadCapability::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
 
         assert_eq!(result.supported, true);
@@ -564,7 +656,7 @@ mod tests {
     fn test_0x8021() {
         // 0x8021 -> 000000000200000000
         let input = hex::decode("000000000200000000").unwrap();
-        let result = LogUploadInfoDid::try_from(input.as_slice()).unwrap();
+        let result = LogUploadCapability::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
 
         assert_eq!(result.supported, false);
@@ -576,7 +668,7 @@ mod tests {
     fn test_0x8200() {
         // 0x8200 -> A005D007
         let input = hex::decode("A005D007").unwrap();
-        let result = SerialDid::try_from(input.as_slice()).unwrap();
+        let result = SerialNumber::try_from(input.as_slice()).unwrap();
         assert_eq!(result.to_bytes(), result.serial);
     }
 
@@ -584,7 +676,7 @@ mod tests {
     fn test_0x8201() {
         // 0x8201 -> 50FF68064884534917540887
         let input = hex::decode("50FF68064884534917540887").unwrap();
-        let result = DeviceIdDid::try_from(input.as_slice()).unwrap();
+        let result = DeviceId::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
     }
 
@@ -592,7 +684,7 @@ mod tests {
     fn test_0x8202() {
         // 0x8202 -> A0094770000047703235313100003030
         let input = hex::decode("A0094770000047703235313100003030").unwrap();
-        let result = SoloEncryptedConfigAndIdDid::try_from(input.as_slice()).unwrap();
+        let result = EncryptedConfigBlob::try_from(input.as_slice()).unwrap();
         assert_eq!(result.to_bytes(), result.unknown);
     }
 
@@ -600,7 +692,7 @@ mod tests {
     fn test_0x8203() {
         // 0x8203 -> 000000B1000000B1000000A3010101
         let input = hex::decode("000000B1000000B1000000A3010101").unwrap();
-        let result = SoloO2CellCalibrationDid::try_from(input.as_slice()).unwrap();
+        let result = SoloCellCalibrationState::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
         assert_eq!(result.o2_calibrations[0], 0x000000B1);
         assert_eq!(result.o2_calibrations[1], 0x000000B1);
@@ -611,10 +703,65 @@ mod tests {
     }
 
     #[test]
+    fn test_0x8204_roundtrip() {
+        let request = SoloCellCalibrationRequest::try_new(98, 1013).unwrap();
+
+        let bytes = request.to_bytes();
+        let decoded = SoloCellCalibrationRequest::try_from(bytes.as_ref()).unwrap();
+
+        assert_eq!(decoded.o2_percent, 98);
+        assert_eq!(decoded.atmospheric_pressure_mbar, 1013);
+    }
+
+    #[test]
+    fn test_calibration_validation() {
+        // Valid values should succeed
+        assert!(SoloCellCalibrationRequest::try_new(70, 600).is_ok());
+        assert!(SoloCellCalibrationRequest::try_new(100, 1050).is_ok());
+        assert!(SoloCellCalibrationRequest::try_new(85, 1013).is_ok());
+
+        // O2 out of range
+        assert!(matches!(
+            SoloCellCalibrationRequest::try_new(69, 1013),
+            Err(CalibrationError::O2OutOfRange(69))
+        ));
+        assert!(matches!(
+            SoloCellCalibrationRequest::try_new(101, 1013),
+            Err(CalibrationError::O2OutOfRange(101))
+        ));
+        assert!(matches!(
+            SoloCellCalibrationRequest::try_new(21, 1013),
+            Err(CalibrationError::O2OutOfRange(21))
+        ));
+
+        // Pressure out of range
+        assert!(matches!(
+            SoloCellCalibrationRequest::try_new(85, 599),
+            Err(CalibrationError::PressureOutOfRange(599))
+        ));
+        assert!(matches!(
+            SoloCellCalibrationRequest::try_new(85, 1051),
+            Err(CalibrationError::PressureOutOfRange(1051))
+        ));
+    }
+
+    #[test]
+    fn test_0x8206_roundtrip() {
+        let request = SoloCellZeroOffsetCalibrationRequest {
+            expected_adc_value: 100,
+        };
+
+        let bytes = request.to_bytes();
+        let decoded = SoloCellZeroOffsetCalibrationRequest::try_from(bytes.as_ref()).unwrap();
+
+        assert_eq!(decoded.expected_adc_value, 100);
+    }
+
+    #[test]
     fn test_0x8205() {
         // 0x8205 -> 000F000200F0000288004803
         let input = hex::decode("000F000200F0000288004803").unwrap();
-        let result = SoloO2CellFactoryCalibrationDid::try_from(input.as_slice()).unwrap();
+        let result = SoloCellZeroOffsets::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
 
         assert_eq!(result.cells[0], 0x000F0002); // 983042
@@ -626,7 +773,7 @@ mod tests {
     fn test_0x8209() {
         // 0x8209 -> B8211756
         let input = hex::decode("B8211756").unwrap();
-        let result = FirmwareCrcDid::try_from(input.as_slice()).unwrap();
+        let result = FirmwareCrc::try_from(input.as_slice()).unwrap();
         assert_eq!(result.crc, 0xB8211756);
         assert_eq!(&result.to_bytes()[..], &input[..]);
     }
@@ -635,7 +782,7 @@ mod tests {
     fn test_0x820a() {
         // 0x820a -> 30303639
         let input = hex::decode("30303639").unwrap();
-        let result = SoloAdcVrefCalibrationDid::try_from(input.as_slice()).unwrap();
+        let result = SoloVoltageCalibration::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
     }
 
@@ -643,7 +790,7 @@ mod tests {
     fn test_0x820b() {
         // 0x820b -> 8AFC3656
         let input = hex::decode("8AFC3656").unwrap();
-        let result = SoloConfigDid::try_from(input.as_slice()).unwrap();
+        let result = SoloControlConfig::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
         assert_eq!(result.battery_voltage_min, 148);
     }
@@ -651,7 +798,7 @@ mod tests {
     fn test_internal_calibration_data() {
         // Real data from device: 000000E4000000E4000000CC010101
         let data = hex::decode("000000E4000000E4000000CC010101").unwrap();
-        let cal_data = SoloO2CellCalibrationDid::try_from(data.as_slice()).unwrap();
+        let cal_data = SoloCellCalibrationState::try_from(data.as_slice()).unwrap();
         assert_eq!(cal_data.o2_calibrations[0], 228);
         assert_eq!(cal_data.o2_calibrations[1], 228);
         assert_eq!(cal_data.o2_calibrations[2], 204);
