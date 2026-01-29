@@ -87,6 +87,8 @@ impl TryFrom<&[u8]> for UdsSecuritySeed {
     }
 }
 
+pub const LOG_ENTRY_SIZE: u32 = 12;
+
 #[derive(Debug, Clone, Copy)]
 pub struct LogEntry {
     pub kind: u8,
@@ -130,6 +132,59 @@ impl<'a> Iterator for LogEntryIterator<'a> {
             return Some(LogEntry { kind, payload });
         }
         None
+    }
+}
+
+pub trait DesEncryptor {
+    fn encrypt_block(&self, block: &mut [u8; 8]);
+}
+
+pub struct LogDecryptor {
+    key_material: [[u8; 8]; 3],
+    seed: u64,
+    pos: u8,
+}
+
+impl LogDecryptor {
+    const LCG_MULT: u64 = 0x10A860C1;
+    const LCG_MOD: u64 = 0xFFFFFFFB;
+
+    pub fn new<E: DesEncryptor>(des: &E, device_id: &[u8], timestamp: u32) -> Self {
+        let mut key_material = [[0u8; 8]; 3];
+
+        key_material[0][0..8].copy_from_slice(&device_id[0..8]);
+        key_material[1][0..4].copy_from_slice(&device_id[8..12]);
+        key_material[1][4..8].copy_from_slice(&timestamp.to_le_bytes());
+        key_material[2].copy_from_slice(&[0xda, 0x65, 0x20, 0x33, 0xc8, 0x57, 0x40, 0xd3]);
+
+        for i in 0..3 {
+            des.encrypt_block(&mut key_material[i]);
+        }
+
+        Self {
+            key_material,
+            seed: timestamp as u64,
+            pos: 0,
+        }
+    }
+
+    #[inline]
+    pub fn decrypt(&mut self, buf: &mut [u8]) {
+        for b in buf {
+            let block_index = (self.pos >> 3) as usize;
+            let byte_index = (self.pos & 7) as usize;
+            let key_byte = self.key_material[block_index][byte_index];
+
+            self.seed = (self.seed.wrapping_mul(Self::LCG_MULT)) % Self::LCG_MOD;
+            let keystream_byte = (self.seed & 0xFF) as u8;
+
+            *b ^= key_byte ^ keystream_byte;
+
+            self.pos += 1;
+            if self.pos == 24 {
+                self.pos = 0;
+            }
+        }
     }
 }
 
