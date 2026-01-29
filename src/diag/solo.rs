@@ -87,6 +87,52 @@ impl TryFrom<&[u8]> for UdsSecuritySeed {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct LogEntry {
+    pub kind: u8,
+    pub payload: [u8; 8],
+}
+
+pub struct LogEntryIterator<'a> {
+    data: &'a [u8],
+    offset: usize,
+    current_kind: u8,
+}
+
+impl<'a> LogEntryIterator<'a> {
+    pub fn new(data: &'a [u8]) -> Self {
+        Self {
+            data,
+            offset: 0,
+            current_kind: 0x00,
+        }
+    }
+}
+
+impl<'a> Iterator for LogEntryIterator<'a> {
+    type Item = LogEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.offset + 12 <= self.data.len() {
+            let entry = &self.data[self.offset..self.offset + 12];
+            self.offset += 12;
+
+            if entry.iter().all(|&b| b == 0xFF) || entry.iter().all(|&b| b == 0x00) {
+                self.current_kind = entry[10];
+                continue;
+            }
+
+            let mut payload = [0u8; 8];
+            payload.copy_from_slice(&entry[..8]);
+            let kind = self.current_kind;
+            self.current_kind = entry[10];
+
+            return Some(LogEntry { kind, payload });
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

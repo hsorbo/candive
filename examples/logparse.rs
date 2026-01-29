@@ -1,3 +1,4 @@
+use candive::diag::solo::LogEntryIterator;
 use candive::divecan::{DiveCanFrame, DiveCanId, Msg};
 use std::env;
 use std::fs::File;
@@ -19,42 +20,25 @@ fn main() -> std::io::Result<()> {
     let mut data = Vec::new();
     file.read_to_end(&mut data)?;
 
-    let mut kind = 0x00u8;
-    let num_entries = data.len() / 12;
-
-    for i in 0..num_entries {
-        let start = i * 12;
-        let end = start + 12;
-        let entry = &data[start..end];
-
-        if entry.iter().all(|&b| b == 0xFF) || entry.iter().all(|&b| b == 0x00) {
-            kind = entry[10];
-            continue;
-        }
-
-        let can_id = 0x0D000000u32 | ((kind as u32) << 16) | 0x0004;
-        let dlc = Msg::dlc_min_size(kind).unwrap_or(8);
-        let mut payload = [0u8; 8];
-        let copy_len = dlc.min(8) as usize;
-        payload[..copy_len].copy_from_slice(&entry[..copy_len]);
+    for entry in LogEntryIterator::new(&data) {
+        let can_id = 0x0D000000u32 | ((entry.kind as u32) << 16) | 0x0004;
+        let dlc = Msg::dlc_min_size(entry.kind).unwrap_or(8);
 
         if divecan_mode {
-            if let Ok(frame) = DiveCanFrame::new(kind, dlc, payload) {
+            if let Ok(frame) = DiveCanFrame::new(entry.kind, dlc, entry.payload) {
                 if let Ok(msg) = Msg::try_from_frame(&frame) {
                     let id: DiveCanId = can_id.into();
                     println!("{:02x} -> {:02x}: {:?}", id.src, id.dst, msg);
                 }
             }
         } else {
-            let payload_str = entry[..dlc as usize]
+            let payload_str = entry.payload[..dlc as usize]
                 .iter()
                 .map(|b| format!("{:02X}", b))
                 .collect::<Vec<_>>()
                 .join(" ");
             println!("  can0  {:08X}   [{}]  {}", can_id, dlc, payload_str);
         }
-
-        kind = entry[10];
     }
 
     Ok(())
