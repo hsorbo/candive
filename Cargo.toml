@@ -1,7 +1,11 @@
 [package]
 name = "candive"
-version = "0.1.0"
+version = "0.0.1-alpha.1"
 edition = "2024"
+license = "MIT"
+authors = ["Håvard Sørbø <havard@hsorbo.no>"]
+repository = "https://github.com/hsorbo/candive"
+description = "DiveCAN parser"
 
 [features]
 default = ["diagnostics", "uds"]
