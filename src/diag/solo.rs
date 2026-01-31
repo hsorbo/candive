@@ -42,29 +42,28 @@ impl UploadRegion {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UdsSecuritySeed {
-    /// CRC32 of transferred data (4 bytes at offset 0-3, little-endian)
-    pub crc32_result: u32,
-    /// Length field (1 byte at offset 4, always 0x10 = 16)
+pub struct LogTransferDigest {
+    pub log_crc32: u32,
+    /// Length field (1 byte at offset 4, always 0x10 = 16).
     pub length: u8,
-    /// RTC timestamp used for log encryption (4 bytes at offset 5-8, little-endian)
-    pub rtc_timestamp: u32,
-    /// Device ID from MCU unique ID (12 bytes at offset 9-20)
-    pub device_id: [u8; 12],
+    /// RTC timestamp captured when the log transfer started
+    pub transfer_start_timestamp: u32,
+    /// Static physical device identifier from MCU unique ID
+    pub physical_device_id: [u8; 12],
 }
 
-impl UdsSecuritySeed {
+impl LogTransferDigest {
     pub fn to_bytes(&self) -> [u8; 21] {
         let mut result = [0u8; 21];
-        result[0..4].copy_from_slice(&self.crc32_result.to_le_bytes());
+        result[0..4].copy_from_slice(&self.log_crc32.to_le_bytes());
         result[4] = self.length;
-        result[5..9].copy_from_slice(&self.rtc_timestamp.to_le_bytes());
-        result[9..21].copy_from_slice(&self.device_id);
+        result[5..9].copy_from_slice(&self.transfer_start_timestamp.to_le_bytes());
+        result[9..21].copy_from_slice(&self.physical_device_id);
         result
     }
 }
 
-impl TryFrom<&[u8]> for UdsSecuritySeed {
+impl TryFrom<&[u8]> for LogTransferDigest {
     type Error = DidDecodeError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
@@ -72,17 +71,17 @@ impl TryFrom<&[u8]> for UdsSecuritySeed {
             return Err(DidDecodeError::TooShort { needed: 21 });
         }
 
-        let crc32_result = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        let log_crc32 = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
         let length = bytes[4];
-        let rtc_timestamp = u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
-        let mut device_id = [0u8; 12];
-        device_id.copy_from_slice(&bytes[9..21]);
+        let transfer_start_timestamp = u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
+        let mut physical_device_id = [0u8; 12];
+        physical_device_id.copy_from_slice(&bytes[9..21]);
 
-        Ok(UdsSecuritySeed {
-            crc32_result,
+        Ok(LogTransferDigest {
+            log_crc32,
             length,
-            rtc_timestamp,
-            device_id,
+            transfer_start_timestamp,
+            physical_device_id,
         })
     }
 }
@@ -200,12 +199,12 @@ mod tests {
             0x84, 0x53, 0x49, 0x17, 0x54, 0x08, 0x87,
         ];
 
-        let parsed = UdsSecuritySeed::try_from(buffer.as_slice()).unwrap();
-        assert_eq!(parsed.crc32_result, 0x4fcaf787);
+        let parsed = LogTransferDigest::try_from(buffer.as_slice()).unwrap();
+        assert_eq!(parsed.log_crc32, 0x4fcaf787);
         assert_eq!(parsed.length, 0x10);
-        assert_eq!(parsed.rtc_timestamp, 0x0002c1c9);
+        assert_eq!(parsed.transfer_start_timestamp, 0x0002c1c9);
         assert_eq!(
-            hex::encode(&parsed.device_id).to_uppercase(),
+            hex::encode(&parsed.physical_device_id).to_uppercase(),
             "50FF68064884534917540887"
         );
     }

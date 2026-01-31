@@ -46,3 +46,9 @@ impl Stm32Crc32 {
         c.checksum()
     }
 }
+
+impl Default for Stm32Crc32 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
