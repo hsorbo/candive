@@ -1,0 +1,26 @@
+[package]
+name = "candive"
+version = "0.0.1-alpha.1"
+edition = "2024"
+license = "MIT"
+authors = ["Håvard Sørbø <havard@hsorbo.no>"]
+repository = "https://github.com/hsorbo/candive"
+description = "DiveCAN parser"
+
+[features]
+default = ["diagnostics", "uds"]
+diagnostics = []
+uds = []
+
+[dependencies]
+
+[dev-dependencies]
+hex = "0.4.3"
+anyhow = "1.0.100"
+des = "0.8.1"
+clap = { version = "4.5", features = ["derive"] }
+indicatif = "0.17"
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+socketcan = "3.5.0"
+socketcan-isotp = "1.0"
