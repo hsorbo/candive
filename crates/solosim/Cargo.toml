@@ -1,0 +1,22 @@
+[package]
+name = "solosim"
+publish = false
+version = "0.0.1-alpha.1"
+edition = "2024"
+license = "MIT"
+authors = ["Håvard Sørbø <havard@hsorbo.no>"]
+repository = "https://github.com/hsorbo/candive"
+description = "Solo simulator CLI tool"
+
+[[bin]]
+name = "solosim"
+path = "src/main.rs"
+
+[dependencies]
+candive = { path = "../candive", features = ["diagnostics", "uds"] }
+anyhow = "1.0.100"
+clap = { version = "4.5", features = ["derive"] }
+hex = "0.4.3"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+socketcan = "3.5.0"

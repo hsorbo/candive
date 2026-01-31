@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/candive",
-    "crates/solodiag"
+    "crates/solodiag",
+    "crates/solosim"
     ]
 resolver = "2"
