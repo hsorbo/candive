@@ -259,7 +259,7 @@ impl From<CellModeArg> for CellMode {
 #[derive(Parser)]
 #[command(
     name = "solodiag",
-    about = "Diagnostic and maintenance tool for Solo devices over SocketCAN (UDS/ISO-TP)",
+    about = "Diagnostic and maintenance tool for SOLO devices over SocketCAN (UDS/ISO-TP)",
     long_about = "Read configuration and device info, export logs, upload firmware, and run calibration procedures via SocketCAN. Requires Linux and a configured CAN interface (e.g. can0).",
     subcommand_required = true,
     arg_required_else_help = true,
@@ -1016,23 +1016,26 @@ fn cmd_config_list(transport: &mut impl UdsTransport) -> CmdResult {
     let config = transport.rdbi_codec::<SoloControlConfig>()?;
     println!("Config");
     println!(
-        "  cal:              {}",
+        "  cal:              {} (direct, monitored)",
         calibration_procedure_as_str(config.calibration_procedure)
     );
     println!(
-        "  ppo2:             {}",
+        "  ppo2:             {} (user, manual, 1sec, 5sec)",
         ppo2_mode_as_str(config.ppo2_control_mode)
     );
-    println!("  cells:            {}", cell_mode_as_str(config.cell_mode));
     println!(
-        "  depth-comp:       {}",
+        "  cells:            {} (two, three)",
+        cell_mode_as_str(config.cell_mode)
+    );
+    println!(
+        "  depth-comp:       {} (on, off)",
         bool_as_on_off(config.depth_compensation_enabled)
     );
     println!("  min-current:      {} mA", config.solenoid_current_min_ma);
     println!("  max-current:      {} mA", config.solenoid_current_max_ma);
-    println!("  min-voltage:      {} mV", config.battery_voltage_min);
+    println!("  min-voltage:      {:.1} V",  config.battery_voltage_min as f32 / 10.0);
     println!(
-        "  voltage-doubling: {}",
+        "  voltage-doubling: {} (on, off)",
         bool_as_on_off(config.battery_voltage_doubling)
     );
     Ok(())
