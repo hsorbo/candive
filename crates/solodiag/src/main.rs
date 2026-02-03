@@ -263,19 +263,19 @@ impl From<CellModeArg> for CellMode {
     long_about = "Read configuration and device info, export logs, upload firmware, and run calibration procedures via SocketCAN. Requires Linux and a configured CAN interface (e.g. can0).",
     subcommand_required = true,
     arg_required_else_help = true,
-    after_help = "Examples:\n  SOLO_KEY=... solodiag device show\n  solodiag logs dump --count 200 --skip 0\n  solodiag config set ppo2 manual\n  solodiag --interface can1 --src 0x5 --dst 0x2 device show"
+    after_help = "Examples:\n  SOLO_KEY=... solodiag device show\n  solodiag logs dump --count 200 --skip 0\n  solodiag config set ppo2 manual\n  solodiag --interface can1 --src 0x1 --dst 0x4 device show"
 )]
 struct Cli {
     /// CAN interface to use (e.g., can0, vcan0)
     #[arg(short, long, default_value = "can0", global = true)]
     interface: String,
 
-    /// Source address (CAN ID source component)
-    #[arg(long, default_value = "0x4", value_parser = parse_hex_u8, global = true)]
+    /// Source address (this diagnostic tool's address)
+    #[arg(long, default_value = "0x9", value_parser = parse_hex_u8, global = true)]
     src: u8,
 
-    /// Destination address (CAN ID destination component)
-    #[arg(long, default_value = "0x1", value_parser = parse_hex_u8, global = true)]
+    /// Destination address (target device address, e.g., SOLO)
+    #[arg(long, default_value = "0x4", value_parser = parse_hex_u8, global = true)]
     dst: u8,
 
     #[command(subcommand)]
@@ -394,9 +394,7 @@ enum ConfigAction {
     )]
     Get { key: ConfigKey },
     /// Update a sconfiguration field (requires SOLO_KEY)
-    #[command(
-        long_about = "Updates config (requires SOLO_KEY)"
-    )]
+    #[command(long_about = "Updates config (requires SOLO_KEY)")]
     Set { key: ConfigKey, value: String },
 }
 
@@ -413,9 +411,7 @@ enum CalAction {
         pressure: u32,
     },
     /// Initiate zero-offset calibration for O₂ cells
-    #[command(
-        long_about = "Initiates calibration with expected ADC value"
-    )]
+    #[command(long_about = "Initiates calibration with expected ADC value")]
     Zero {
         #[arg(long)]
         adc_value: u32,
@@ -487,8 +483,7 @@ fn parse_u16(value: &str) -> CmdResult<u16> {
 
 fn parse_hex_u8(s: &str) -> Result<u8, String> {
     if let Some(hex_str) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-        u8::from_str_radix(hex_str, 16)
-            .map_err(|_| format!("Invalid hex value: {}", s))
+        u8::from_str_radix(hex_str, 16).map_err(|_| format!("Invalid hex value: {}", s))
     } else {
         s.parse::<u8>()
             .map_err(|_| format!("Invalid decimal value: {}", s))
@@ -1033,7 +1028,10 @@ fn cmd_config_list(transport: &mut impl UdsTransport) -> CmdResult {
     );
     println!("  min-current:      {} mA", config.solenoid_current_min_ma);
     println!("  max-current:      {} mA", config.solenoid_current_max_ma);
-    println!("  min-voltage:      {:.1} V",  config.battery_voltage_min as f32 / 10.0);
+    println!(
+        "  min-voltage:      {:.1} V",
+        config.battery_voltage_min as f32 / 10.0
+    );
     println!(
         "  voltage-doubling: {} (on, off)",
         bool_as_on_off(config.battery_voltage_doubling)
@@ -1265,15 +1263,17 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let id = DiveCanId::new(cli.src, cli.dst, 0xa);
-    let mut session =
-        match SocketCanIsoTpSessionUdsSession::new(&cli.interface, id.to_u32(), id.reply(id.kind).to_u32())
-        {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("ERROR: Failed to create session: {:?}", e);
-                std::process::exit(1);
-            }
-        };
+    let mut session = match SocketCanIsoTpSessionUdsSession::new(
+        &cli.interface,
+        id.reply(id.kind).to_u32(),
+        id.to_u32(),
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ERROR: Failed to create session: {:?}", e);
+            std::process::exit(1);
+        }
+    };
 
     let des_key = get_solo_key();
 

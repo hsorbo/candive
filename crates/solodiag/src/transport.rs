@@ -59,16 +59,12 @@ pub struct SocketCanIsoTpSessionUdsSession {
 }
 
 impl SocketCanIsoTpSessionUdsSession {
-    pub fn new(
-        interface: &str,
-        src: u32,
-        dst: u32,
-    ) -> Result<Self, UdsClientError<TransportError>> {
-        let src_id =
-            socketcan::ExtendedId::new(src).ok_or_else(|| ProtocolError::UnexpectedResponse)?;
-        let dst_id =
-            socketcan::ExtendedId::new(dst).ok_or_else(|| ProtocolError::UnexpectedResponse)?;
-        let socket = socketcan_isotp::IsoTpSocket::open(interface, src_id, dst_id)
+    pub fn new(interface: &str, rx: u32, tx: u32) -> Result<Self, UdsClientError<TransportError>> {
+        let rx_id =
+            socketcan::ExtendedId::new(rx).ok_or_else(|| ProtocolError::UnexpectedResponse)?;
+        let tx_id =
+            socketcan::ExtendedId::new(tx).ok_or_else(|| ProtocolError::UnexpectedResponse)?;
+        let socket = socketcan_isotp::IsoTpSocket::open(interface, rx_id, tx_id)
             .map_err(|_| UdsClientError::Transport(TransportError::Io))?;
         Ok(Self {
             socket: std::cell::RefCell::new(socket),
