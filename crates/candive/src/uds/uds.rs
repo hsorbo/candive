@@ -450,7 +450,7 @@ impl ServiceCodec for RequestUploadCodec {
         out: &mut UdsPduWriter<'_>,
     ) -> Result<(), UdsEncodeError> {
         out.set_header(Self::REQ_SID)?;
-        out.push(&[DFI_COMPRESSED, ALFI_ADDR4_SIZE4])?;
+        out.push(&[req.dlf as u8, ALFI_ADDR4_SIZE4])?;
         out.push(&req.address.to_be_bytes())?;
         out.push(&req.size.to_be_bytes())?;
         Ok(())
