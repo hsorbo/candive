@@ -1,6 +1,3 @@
-#[cfg(not(target_os = "linux"))]
-compile_error!("solodiag is supported only on Linux (requires SocketCAN).");
-
 use anyhow::{Result, anyhow};
 use candive::diag::settings::{
     SettingValue, UserSettingDid, UserSettingInput, UserSettingPayload, UserSettingType,
@@ -19,10 +16,65 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, Write};
 use std::path::PathBuf;
 
+use crate::transport::RfcommGatewayTransport;
+#[cfg(target_os = "linux")]
 use crate::transport::SocketCanIsoTpSessionUdsSession;
 
 mod msgformat;
 mod transport;
+
+enum Transport {
+    #[cfg(target_os = "linux")]
+    Can(SocketCanIsoTpSessionUdsSession),
+    Rfcomm(RfcommGatewayTransport),
+}
+
+impl candive::uds::client::UdsTransport for Transport {
+    type Error = transport::TransportError;
+
+    fn request(&mut self, req: &[u8], resp_buf: &mut [u8]) -> Result<usize, Self::Error> {
+        match self {
+            #[cfg(target_os = "linux")]
+            Transport::Can(t) => t.request(req, resp_buf),
+            Transport::Rfcomm(t) => t.request(req, resp_buf),
+        }
+    }
+}
+
+fn parse_transport_uri(uri: &str, src: u8, dst: u8) -> CmdResult<Transport> {
+    if let Some(interface) = uri.strip_prefix("can://") {
+        #[cfg(target_os = "linux")]
+        {
+            let id = DiveCanId::new(src, dst, 0xa);
+            let session = SocketCanIsoTpSessionUdsSession::new(
+                interface,
+                id.reply(id.kind).to_u32(),
+                id.to_u32(),
+            )
+            .map_err(|e| anyhow!("Failed to create CAN transport: {:?}", e))?;
+            Ok(Transport::Can(session))
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            Err(anyhow!("CAN transport is only available on Linux"))
+        }
+    } else if let Some(port) = uri.strip_prefix("rfcomm://") {
+        let session = RfcommGatewayTransport::new(port, src, dst)
+            .map_err(|e| anyhow!("Failed to create RFCOMM transport: {:?}", e))?;
+        if src != 1 {
+            eprintln!("src != 0x1 probably wont work.")
+        }
+        if dst == 1 || dst == 0x80 {
+            eprintln!("With dst={:x}, you are communicating with handset, probably not what you want", dst)
+        }
+
+        Ok(Transport::Rfcomm(session))
+    } else {
+        Err(anyhow!(
+            "Invalid transport URI. Use can://<interface> or rfcomm://<port>"
+        ))
+    }
+}
 
 type CmdResult<T = ()> = Result<T>;
 
@@ -262,16 +314,16 @@ impl From<CellModeArg> for CellMode {
 #[derive(Parser)]
 #[command(
     name = "solodiag",
-    about = "Diagnostic and maintenance tool for SOLO devices over SocketCAN (UDS/ISO-TP)",
-    long_about = "Read configuration and device info, export logs, upload firmware, and run calibration procedures via SocketCAN. Requires Linux and a configured CAN interface (e.g. can0).",
+    about = "Diagnostic and maintenance tool for SOLO devices",
+    long_about = "Read configuration and device info, export logs, upload firmware, and run calibration procedures. Supports CAN (Linux only) and RFCOMM transports.",
     subcommand_required = true,
     arg_required_else_help = true,
-    after_help = "Examples:\n  SOLO_KEY=... solodiag device show\n  solodiag logs dump --count 200 --skip 0\n  solodiag config set ppo2 manual\n  solodiag --interface can1 --src 0x1 --dst 0x4 device show"
+    after_help = "Examples:\n  SOLO_KEY=... solodiag --transport rfcomm:///dev/rfcomm0 device show\n  solodiag --transport can://can0 logs dump --count 200\n  solodiag --transport rfcomm:///dev/rfcomm0 config set ppo2 manual"
 )]
 struct Cli {
-    /// CAN interface to use (e.g., can0, vcan0)
-    #[arg(short, long, default_value = "can0", global = true)]
-    interface: String,
+    /// Transport URI (can://<interface> or rfcomm://<port>)
+    #[arg(short, long, default_value = "can://can0", global = true)]
+    transport: String,
 
     /// Source address (this diagnostic tool's address)
     #[arg(long, default_value = "0x9", value_parser = parse_hex_u8, global = true)]
@@ -1282,18 +1334,7 @@ fn cmd_scan_rdbi(transport: &mut impl UdsTransport) -> CmdResult {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let id = DiveCanId::new(cli.src, cli.dst, 0xa);
-    let mut session = match SocketCanIsoTpSessionUdsSession::new(
-        &cli.interface,
-        id.reply(id.kind).to_u32(),
-        id.to_u32(),
-    ) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create session: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    let mut session = parse_transport_uri(&cli.transport, cli.src, cli.dst)?;
 
     let des_key = get_solo_key();
 

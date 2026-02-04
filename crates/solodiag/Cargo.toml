@@ -19,6 +19,7 @@ clap = { version = "4.5", features = ["derive"] }
 des = "0.8.1"
 hex = "0.4.3"
 indicatif = "0.17"
+serialport = "4.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 socketcan = "3.5.0"
