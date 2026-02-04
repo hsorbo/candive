@@ -5,7 +5,7 @@ use anyhow::{Result, anyhow};
 use candive::diag::settings::{
     SettingValue, UserSettingDid, UserSettingInput, UserSettingPayload, UserSettingType,
 };
-use candive::diag::solo::*;
+use candive::diag::solo::{self, *};
 use candive::diag::{Stm32Crc32, did::*};
 use candive::divecan::{DiveCanFrame, DiveCanId, Msg};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -508,7 +508,7 @@ fn new_progress_bar(size: u64) -> ProgressBar {
 }
 
 fn cmd_logs_info() -> CmdResult {
-    let log_region = &UploadRegion::MMC_LOG;
+    let log_region = &solo::regions::MMC_LOG;
     let total_size = log_region.addr_range.end() - log_region.addr_range.start();
     let entry_count = total_size / LOG_ENTRY_SIZE;
 
@@ -521,7 +521,7 @@ fn cmd_logs_info() -> CmdResult {
 
 fn logs_get_digest(transport: &mut impl UdsTransport) -> CmdResult<LogTransferDigest> {
     let mut device_data = Vec::new();
-    let start = *UploadRegion::MCU_DEVINFO.addr_range.start();
+    let start = *solo::regions::MCU_DEVINFO.addr_range.start();
     transport.upload(start, 21, &mut device_data, |_, _| {})?;
     Ok(LogTransferDigest::try_from(device_data.as_slice()).map_err(|e| anyhow!("{:?}", e))?)
 }
@@ -539,7 +539,7 @@ fn cmd_logs_export(
     let log_size = entry_count * LOG_ENTRY_SIZE;
     let skip_bytes = skip_count * LOG_ENTRY_SIZE;
 
-    let start = *UploadRegion::MMC_LOG.addr_range.start() + skip_bytes;
+    let start = *solo::regions::MMC_LOG.addr_range.start() + skip_bytes;
 
     let tmp_filename = filename.with_extension("tmp");
 
@@ -608,7 +608,7 @@ fn dump_log_chunk(
     let log_size = count * LOG_ENTRY_SIZE;
     let skip_bytes = skip * LOG_ENTRY_SIZE;
 
-    let start = *UploadRegion::MMC_LOG.addr_range.start() + skip_bytes;
+    let start = *solo::regions::MMC_LOG.addr_range.start() + skip_bytes;
     let mut encrypted: Vec<u8> = Vec::new();
     transport.upload(start, log_size as usize, &mut encrypted, |_, _| {})?;
 
@@ -644,7 +644,7 @@ fn cmd_logs_dump(
 
     let skip_count = skip.unwrap_or(0);
 
-    let log_region = &UploadRegion::MMC_LOG;
+    let log_region = &solo::regions::MMC_LOG;
     let total_size = log_region.addr_range.end() - log_region.addr_range.start();
     let max_entries = total_size / LOG_ENTRY_SIZE;
 
@@ -700,8 +700,8 @@ fn cmd_logs_dump(
 
 fn cmd_mem_dump(transport: &mut impl UdsTransport, filename: PathBuf) -> CmdResult {
     let mut f2 = File::create(&filename)?;
-    let region = UploadRegion::MMC_START;
     let size = 0x1000 - 0x80;
+    let region = solo::regions::MMC_START;
 
     let pb = new_progress_bar(size as u64);
     pb.set_message("Dumping SPI FLASH");

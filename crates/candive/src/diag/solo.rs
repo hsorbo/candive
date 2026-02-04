@@ -1,43 +1,33 @@
-use core::ops::RangeInclusive;
-
 use crate::diag::did::DidDecodeError;
 
-#[derive(Debug, Clone)]
-pub struct UploadRegion {
-    pub addr_range: RangeInclusive<u32>,
-    /// Required address alignment in bytes (0 = no requirement)
-    pub addr_align: u32,
-    /// Minimum allowed size in bytes (inclusive)
-    pub size_min: u32,
-    /// Maximum allowed size in bytes (inclusive)
-    pub size_max: u32,
-    /// Required size alignment in bytes (0 = no requirement)
-    pub size_align: u32,
-}
+pub mod regions {
+    use crate::diag::KnownRegion;
 
-impl UploadRegion {
-    pub const MMC_START: Self = Self {
+    pub const MMC_START: KnownRegion = KnownRegion {
         addr_range: 0xC200_0080..=0xC200_0FFF,
-        addr_align: 8,
-        size_min: 8,
-        size_max: 0xFFFF_FFFF,
-        size_align: 8,
+        addr_align: Some(8),
+        size_min: Some(8),
+        size_max: Some(0xFFFF_FFFF),
+        size_align: Some(8),
+        compressed: false,
     };
 
-    pub const MMC_LOG: Self = Self {
+    pub const MMC_LOG: KnownRegion = KnownRegion {
         addr_range: 0xC300_1000..=0xC3FF_FFFF,
-        addr_align: 0,
-        size_min: 12,
-        size_max: 0x00FF_F000,
-        size_align: 12,
+        addr_align: Some(0),
+        size_min: Some(12),
+        size_max: Some(0x00FF_F000),
+        size_align: Some(12),
+        compressed: false,
     };
 
-    pub const MCU_DEVINFO: Self = Self {
+    pub const MCU_DEVINFO: KnownRegion = KnownRegion {
         addr_range: 0xC500_0000..=0xC500_007F,
-        addr_align: 0,
-        size_min: 1,
-        size_max: 0x80,
-        size_align: 0,
+        addr_align: Some(0),
+        size_min: Some(1),
+        size_max: Some(0x80),
+        size_align: Some(0),
+        compressed: false,
     };
 }
 

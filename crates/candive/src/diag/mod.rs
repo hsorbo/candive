@@ -1,3 +1,5 @@
+use core::ops::RangeInclusive;
+
 pub mod did;
 pub mod settings;
 pub mod solo;
@@ -51,4 +53,19 @@ impl Default for Stm32Crc32 {
     fn default() -> Self {
         Self::new()
     }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct KnownRegion {
+    pub addr_range: RangeInclusive<u32>,
+    /// Required address alignment in bytes (0 = no requirement)
+    pub addr_align: Option<u32>,
+    /// Minimum allowed size in bytes (inclusive)
+    pub size_min: Option<u32>,
+    /// Maximum allowed size in bytes (inclusive)
+    pub size_max: Option<u32>,
+    /// Required size alignment in bytes (0 = no requirement)
+    pub size_align: Option<u32>,
+    pub compressed: bool,
 }
