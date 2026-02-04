@@ -11,6 +11,7 @@ pub enum UdsEncodeError {
 }
 
 pub const DFI_PLAIN: u8 = 0x00;
+pub const DFI_COMPRESSED: u8 = 0x10;
 pub const ALFI_ADDR4_SIZE4: u8 = (4 << 4) | 4;
 
 pub const SID_RDBI_REQ: u8 = 0x22;
@@ -406,8 +407,28 @@ impl ServiceCodec for RequestDownloadCodec {
 // RequestUpload (0x35 / 0x75)
 pub struct RequestUploadCodec;
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dlf {
+    Normal = 0x00,
+    Compressed = 0x10,
+}
+
+impl TryFrom<u8> for Dlf {
+    type Error = UdsDecodeError;
+
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        match v {
+            0x00 => Ok(Dlf::Normal),
+            0x10 => Ok(Dlf::Compressed),
+            _ => Err(UdsDecodeError::InvalidFormat), // or a more specific error if you have one
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RequestUploadReq {
+    pub dlf: Dlf,
     pub address: u32,
     pub size: u32,
 }
@@ -429,7 +450,7 @@ impl ServiceCodec for RequestUploadCodec {
         out: &mut UdsPduWriter<'_>,
     ) -> Result<(), UdsEncodeError> {
         out.set_header(Self::REQ_SID)?;
-        out.push(&[DFI_PLAIN, ALFI_ADDR4_SIZE4])?;
+        out.push(&[DFI_COMPRESSED, ALFI_ADDR4_SIZE4])?;
         out.push(&req.address.to_be_bytes())?;
         out.push(&req.size.to_be_bytes())?;
         Ok(())
@@ -438,12 +459,13 @@ impl ServiceCodec for RequestUploadCodec {
     fn decode_request<'a>(pdu: UdsPduView<'a>) -> Result<Self::Request<'a>, UdsDecodeError> {
         pdu.expect_sid(Self::REQ_SID, 12)?;
         let bytes = pdu.as_bytes();
-        if bytes[2] != DFI_PLAIN || bytes[3] != ALFI_ADDR4_SIZE4 {
+        let dlf = Dlf::try_from(bytes[2])?;
+        if bytes[3] != ALFI_ADDR4_SIZE4 {
             return Err(UdsDecodeError::InvalidFormat);
         }
         let address = u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
         let size = u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
-        Ok(RequestUploadReq { address, size })
+        Ok(RequestUploadReq { dlf, address, size })
     }
 
     fn encode_response(

@@ -194,10 +194,11 @@ impl<'a, T: UdsTransport> UploadSession<'a, T> {
         transport: &'a mut T,
         address: u32,
         size: u32,
+        dlf: Dlf,
         tx_buf: &'a mut [u8],
         rx_buf: &'a mut [u8],
     ) -> Result<Self, UdsClientError<T::Error>> {
-        let req = RequestUploadReq { address, size };
+        let req = RequestUploadReq { dlf, address, size };
         let _resp = transact::<RequestUploadCodec, _>(transport, tx_buf, rx_buf, &req)?;
 
         Ok(Self {

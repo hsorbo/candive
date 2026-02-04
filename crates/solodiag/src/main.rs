@@ -8,6 +8,7 @@ use candive::diag::settings::{
 use candive::diag::solo::{self, *};
 use candive::diag::{Stm32Crc32, did::*};
 use candive::divecan::{DiveCanFrame, DiveCanId, Msg};
+use candive::uds::uds::Dlf;
 use clap::{Parser, Subcommand, ValueEnum};
 use des::Des;
 use des::cipher::generic_array::GenericArray;
@@ -36,6 +37,7 @@ trait UdsTransport {
         &mut self,
         address: u32,
         size: usize,
+        dlf: Dlf,
         out: &mut W,
         progress: impl Fn(usize, usize),
     ) -> CmdResult<()>;
@@ -77,6 +79,7 @@ impl<T: candive::uds::client::UdsTransport<Error = transport::TransportError>> U
         &mut self,
         address: u32,
         size: usize,
+        dlf: Dlf,
         out: &mut W,
         progress: impl Fn(usize, usize),
     ) -> CmdResult<()> {
@@ -86,7 +89,7 @@ impl<T: candive::uds::client::UdsTransport<Error = transport::TransportError>> U
         let mut chunk_buf = vec![0u8; 4096];
 
         let mut session =
-            UploadSession::start(self, address, size as u32, &mut tx_buf, &mut rx_buf)
+            UploadSession::start(self, address, size as u32, dlf, &mut tx_buf, &mut rx_buf)
                 .map_err(transport::uds_error_to_anyhow)?;
 
         let mut total = 0;
@@ -522,7 +525,7 @@ fn cmd_logs_info() -> CmdResult {
 fn logs_get_digest(transport: &mut impl UdsTransport) -> CmdResult<LogTransferDigest> {
     let mut device_data = Vec::new();
     let start = *solo::regions::MCU_DEVINFO.addr_range.start();
-    transport.upload(start, 21, &mut device_data, |_, _| {})?;
+    transport.upload(start, 21, Dlf::Normal, &mut device_data, |_, _| {})?;
     Ok(LogTransferDigest::try_from(device_data.as_slice()).map_err(|e| anyhow!("{:?}", e))?)
 }
 
@@ -556,9 +559,15 @@ fn cmd_logs_export(
         entry_count, skip_count
     ));
 
-    transport.upload(start, log_size as usize, &mut tmpf, |current, _total| {
-        pb.set_position(current as u64);
-    })?;
+    transport.upload(
+        start,
+        log_size as usize,
+        Dlf::Normal,
+        &mut tmpf,
+        |current, _total| {
+            pb.set_position(current as u64);
+        },
+    )?;
 
     pb.finish_with_message("Log download complete");
 
@@ -610,7 +619,13 @@ fn dump_log_chunk(
 
     let start = *solo::regions::MMC_LOG.addr_range.start() + skip_bytes;
     let mut encrypted: Vec<u8> = Vec::new();
-    transport.upload(start, log_size as usize, &mut encrypted, |_, _| {})?;
+    transport.upload(
+        start,
+        log_size as usize,
+        Dlf::Normal,
+        &mut encrypted,
+        |_, _| {},
+    )?;
 
     let digest = logs_get_digest(transport)?;
 
@@ -708,7 +723,12 @@ fn cmd_mem_dump(transport: &mut impl UdsTransport, filename: PathBuf) -> CmdResu
 
     transport.upload(
         *region.addr_range.start(),
-        size,
+        size as usize,
+        if region.compressed {
+            Dlf::Compressed
+        } else {
+            Dlf::Normal
+        },
         &mut f2,
         |current, _total| {
             pb.set_position(current as u64);
