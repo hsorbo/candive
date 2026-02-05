@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use candive::diag::did::solo::*;
 use candive::diag::settings::{
     SettingValue, UserSettingDid, UserSettingInput, UserSettingPayload, UserSettingType,
 };
@@ -65,7 +66,10 @@ fn parse_transport_uri(uri: &str, src: u8, dst: u8) -> CmdResult<Transport> {
             eprintln!("src != 0x1 probably wont work.")
         }
         if dst == 1 || dst == 0x80 {
-            eprintln!("With dst={:x}, you are communicating with handset, probably not what you want", dst)
+            eprintln!(
+                "With dst={:x}, you are communicating with handset, probably not what you want",
+                dst
+            )
         }
 
         Ok(Transport::Rfcomm(session))
@@ -1080,7 +1084,7 @@ fn cmd_device_info(transport: &mut impl UdsTransport) -> CmdResult {
 }
 
 fn cmd_config_list(transport: &mut impl UdsTransport) -> CmdResult {
-    let config = transport.rdbi_codec::<SoloControlConfig>()?;
+    let config = transport.rdbi_codec::<ControlConfig>()?;
     println!("Config");
     println!(
         "  cal:              {} (direct, monitored)",
@@ -1112,7 +1116,7 @@ fn cmd_config_list(transport: &mut impl UdsTransport) -> CmdResult {
 }
 
 fn cmd_config_get(transport: &mut impl UdsTransport, key: ConfigKey) -> CmdResult {
-    let config = transport.rdbi_codec::<SoloControlConfig>()?;
+    let config = transport.rdbi_codec::<ControlConfig>()?;
     match key {
         ConfigKey::Cal => println!(
             "{}",
@@ -1137,7 +1141,7 @@ fn cmd_config_set(
     value: &str,
     des_key: [u8; 8],
 ) -> CmdResult {
-    let original_config = transport.rdbi_codec::<SoloControlConfig>()?;
+    let original_config = transport.rdbi_codec::<ControlConfig>()?;
     let mut config = original_config.clone();
 
     match key {
@@ -1197,7 +1201,7 @@ fn cmd_config_set(
 }
 
 fn cmd_calibrate_o2_cells(transport: &mut impl UdsTransport, fo2: u32, pressure: u32) -> CmdResult {
-    let request = match SoloCellCalibrationRequest::try_new(fo2, pressure) {
+    let request = match CellCalibrationRequest::try_new(fo2, pressure) {
         Ok(req) => req,
         Err(CalibrationError::O2OutOfRange(value)) => {
             return Err(anyhow!(
@@ -1214,7 +1218,7 @@ fn cmd_calibrate_o2_cells(transport: &mut impl UdsTransport, fo2: u32, pressure:
     };
 
     let bytes = request.to_bytes();
-    transport.wdbi(SoloCellCalibrationRequest::DID, &bytes)?;
+    transport.wdbi(CellCalibrationRequest::DID, &bytes)?;
 
     println!("Cell calibration initiated");
     println!("  FO2: {}%", fo2);
@@ -1224,12 +1228,12 @@ fn cmd_calibrate_o2_cells(transport: &mut impl UdsTransport, fo2: u32, pressure:
 }
 
 fn cmd_calibrate_zero_offset(transport: &mut impl UdsTransport, adc_value: u32) -> CmdResult {
-    let request = SoloCellZeroOffsetCalibrationRequest {
+    let request = CellZeroOffsetCalibrationRequest {
         expected_adc_value: adc_value,
     };
 
     let bytes = request.to_bytes();
-    transport.wdbi(SoloCellZeroOffsetCalibrationRequest::DID, &bytes)?;
+    transport.wdbi(CellZeroOffsetCalibrationRequest::DID, &bytes)?;
 
     println!(
         "Cell zero offset calibration initiated with expected ADC value {}",
@@ -1241,7 +1245,7 @@ fn cmd_calibrate_zero_offset(transport: &mut impl UdsTransport, adc_value: u32) 
 }
 
 fn cmd_cal_show_o2(transport: &mut impl UdsTransport) -> CmdResult {
-    let cal_state = transport.rdbi_codec::<SoloCellCalibrationState>()?;
+    let cal_state = transport.rdbi_codec::<CellCalibrationState>()?;
     println!("O2 Calibration State:");
     for (i, (&cal_value, &valid)) in cal_state
         .o2_calibrations
@@ -1256,7 +1260,7 @@ fn cmd_cal_show_o2(transport: &mut impl UdsTransport) -> CmdResult {
 }
 
 fn cmd_cal_show_zero(transport: &mut impl UdsTransport) -> CmdResult {
-    let offsets = transport.rdbi_codec::<SoloCellZeroOffsets>()?;
+    let offsets = transport.rdbi_codec::<CellZeroOffsets>()?;
     println!("Cell Zero Offsets:");
     for (i, &offset) in offsets.cells.iter().enumerate() {
         println!("  Cell {}: {}", i, offset);
@@ -1293,19 +1297,19 @@ fn cmd_serial(transport: &mut impl UdsTransport, value: Option<String>) -> CmdRe
 }
 
 fn cmd_cal_vref_set(transport: &mut impl UdsTransport, value: u32) -> CmdResult {
-    if value < SoloVoltageCalibration::MIN || value > SoloVoltageCalibration::MAX {
+    if value < VoltageCalibration::MIN || value > VoltageCalibration::MAX {
         return Err(anyhow!(
             "Voltage calibration value {} is out of valid range ({}-{})",
             value,
-            SoloVoltageCalibration::MIN,
-            SoloVoltageCalibration::MAX
+            VoltageCalibration::MIN,
+            VoltageCalibration::MAX
         ));
     }
 
-    let calibration = SoloVoltageCalibration::new(value);
+    let calibration = VoltageCalibration::new(value);
     let bytes = calibration.to_bytes();
 
-    transport.wdbi(SoloVoltageCalibration::DID, &bytes)?;
+    transport.wdbi(VoltageCalibration::DID, &bytes)?;
 
     println!("Voltage calibration value set to: {}", value);
     println!("  (0x{:04x})", value);

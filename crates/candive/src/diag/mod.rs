@@ -55,7 +55,6 @@ impl Default for Stm32Crc32 {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct KnownRegion {
     pub addr_range: RangeInclusive<u32>,

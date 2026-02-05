@@ -66,184 +66,6 @@ macro_rules! define_byte_array_did {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum PPO2ControlMode {
-    UserSelect = 0,
-    Manual = 1,
-    OneSec = 2,
-    FiveSec = 3,
-}
-
-impl TryFrom<u8> for PPO2ControlMode {
-    type Error = DidDecodeError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::UserSelect),
-            1 => Ok(Self::Manual),
-            2 => Ok(Self::OneSec),
-            3 => Ok(Self::FiveSec),
-            _ => Err(DidDecodeError::InvalidEnumValue { value }),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum CalibrationProcedure {
-    /// Direct calibration - immediately reads and calibrates
-    Direct = 0,
-    /// Monitored calibration - verifies stability, solenoid, and battery before calibrating
-    Monitored = 1,
-}
-
-impl TryFrom<u8> for CalibrationProcedure {
-    type Error = DidDecodeError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Direct),
-            1 => Ok(Self::Monitored),
-            _ => Err(DidDecodeError::InvalidEnumValue { value }),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CellMode {
-    //Uses 2 oxygen sensors, PID gains Kp=1.2, max pulse 9ms
-    TwoCell,
-    //Uses 3 oxygen sensors, PID gains Kp=2.5, max pulse 14ms
-    ThreeCell,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SoloControlConfig {
-    pub calibration_procedure: CalibrationProcedure,
-    pub ppo2_control_mode: PPO2ControlMode,
-    pub cell_mode: CellMode,
-    pub depth_compensation_enabled: bool,
-    pub solenoid_current_min_ma: u16,
-    /// Solenoid maximum current in mA
-    pub solenoid_current_max_ma: u16,
-    /// Battery minimum voltage
-    pub battery_voltage_min: u16,
-    pub battery_voltage_doubling: bool,
-    pub reserved_bits_20_21: u8,
-    pub reserved_bits_24_31: u8,
-}
-
-impl DataIdentifier for SoloControlConfig {
-    const DID: u16 = 0x820b;
-    type Bytes = [u8; 4];
-
-    fn to_bytes(&self) -> Self::Bytes {
-        let mut config_word: u32 = 0;
-
-        if self.calibration_procedure == CalibrationProcedure::Monitored {
-            config_word |= 1;
-        } else {
-            config_word |= 2;
-        }
-
-        config_word |= (self.ppo2_control_mode as u32 & 0x3) << 2;
-
-        if self.cell_mode == CellMode::ThreeCell {
-            config_word |= 1 << 4;
-        }
-
-        if self.depth_compensation_enabled {
-            config_word |= 1 << 6;
-        } else {
-            config_word |= 2 << 6;
-        }
-
-        let sol_min_raw = (self.solenoid_current_min_ma.saturating_sub(50) / 10) & 0xF;
-        config_word |= (sol_min_raw as u32) << 8;
-
-        let sol_max_raw = (self.solenoid_current_max_ma.saturating_sub(50) / 10) & 0x1F;
-        config_word |= ((sol_max_raw & 0xF) as u32) << 12;
-        config_word |= ((sol_max_raw >> 4) as u32) << 23;
-
-        let mut batt_raw = self.battery_voltage_min;
-        if self.battery_voltage_doubling {
-            batt_raw >>= 1;
-        }
-        batt_raw = (batt_raw.saturating_sub(50) >> 1) & 0xF;
-        config_word |= (batt_raw as u32) << 16;
-
-        if self.battery_voltage_doubling {
-            config_word |= 1 << 22;
-        }
-
-        config_word |= (self.reserved_bits_20_21 as u32 & 0x3) << 20;
-        config_word |= (self.reserved_bits_24_31 as u32) << 24;
-
-        config_word.to_be_bytes()
-    }
-}
-
-impl TryFrom<&[u8]> for SoloControlConfig {
-    type Error = DidDecodeError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let arr: [u8; 4] = bytes
-            .try_into()
-            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 4))?;
-        let config_word = u32::from_be_bytes(arr);
-
-        let calibration_procedure = if (config_word & 0x3) == 1 {
-            CalibrationProcedure::Monitored
-        } else {
-            CalibrationProcedure::Direct
-        };
-
-        let ppo2_control_value = ((config_word >> 2) & 0x3) as u8;
-        let ppo2_control_mode = PPO2ControlMode::try_from(ppo2_control_value)?;
-
-        let cell_averaging_3cell = ((config_word >> 4) & 0x3) == 1;
-        let depth_compensation_enabled = ((config_word >> 6) & 0x3) == 1;
-
-        let sol_min_raw = ((config_word >> 8) & 0xF) as u16;
-        let solenoid_current_min_ma = 50 + (sol_min_raw * 10);
-
-        let sol_max_lo = ((config_word >> 12) & 0xF) as u16;
-        let sol_max_hi = ((config_word >> 23) & 0x1) as u16;
-        let solenoid_current_max_ma = 50 + (((sol_max_hi << 4) | sol_max_lo) * 10);
-
-        let batt_min_raw = ((config_word >> 16) & 0xF) as u16;
-        let mut battery_voltage_min = 50 + (batt_min_raw << 1);
-
-        let battery_voltage_doubling = ((config_word >> 22) & 0x1) == 1;
-        if battery_voltage_doubling {
-            battery_voltage_min <<= 1;
-        }
-
-        let cell_mode = if cell_averaging_3cell {
-            CellMode::ThreeCell
-        } else {
-            CellMode::TwoCell
-        };
-
-        let reserved_bits_20_21 = ((config_word >> 20) & 0x3) as u8;
-        let reserved_bits_24_31 = ((config_word >> 24) & 0xFF) as u8;
-
-        Ok(SoloControlConfig {
-            calibration_procedure,
-            ppo2_control_mode,
-            cell_mode,
-            depth_compensation_enabled,
-            solenoid_current_min_ma,
-            solenoid_current_max_ma,
-            battery_voltage_min,
-            battery_voltage_doubling,
-            reserved_bits_20_21,
-            reserved_bits_24_31,
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FirmwareDownloadCapability {
     pub supported: bool,
     pub address: u32,
@@ -323,220 +145,6 @@ impl TryFrom<&[u8]> for LogUploadCapability {
     }
 }
 
-/// O2 cell runtime calibration data (DID 0x8203)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SoloCellCalibrationState {
-    pub o2_calibrations: [u32; 3],
-    pub calibration_valid: [bool; 3],
-}
-
-impl DataIdentifier for SoloCellCalibrationState {
-    const DID: u16 = 0x8203;
-    type Bytes = [u8; 15];
-
-    fn to_bytes(&self) -> Self::Bytes {
-        let mut result = [0u8; 15];
-        result[0..4].copy_from_slice(&self.o2_calibrations[0].to_be_bytes());
-        result[4..8].copy_from_slice(&self.o2_calibrations[1].to_be_bytes());
-        result[8..12].copy_from_slice(&self.o2_calibrations[2].to_be_bytes());
-        result[12] = if self.calibration_valid[0] { 1 } else { 0 };
-        result[13] = if self.calibration_valid[1] { 1 } else { 0 };
-        result[14] = if self.calibration_valid[2] { 1 } else { 0 };
-        result
-    }
-}
-
-impl TryFrom<&[u8]> for SoloCellCalibrationState {
-    type Error = DidDecodeError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let arr: [u8; 15] = bytes
-            .try_into()
-            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 15))?;
-
-        let mut calibration_valid = [false; 3];
-        for i in 0..3 {
-            calibration_valid[i] = match arr[12 + i] {
-                0 => false,
-                1 => true,
-                other => return Err(DidDecodeError::InvalidEnumValue { value: other }),
-            };
-        }
-
-        Ok(Self {
-            o2_calibrations: [
-                u32::from_be_bytes([arr[0], arr[1], arr[2], arr[3]]),
-                u32::from_be_bytes([arr[4], arr[5], arr[6], arr[7]]),
-                u32::from_be_bytes([arr[8], arr[9], arr[10], arr[11]]),
-            ],
-            calibration_valid,
-        })
-    }
-}
-
-/// ADC voltage reference calibration value
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SoloVoltageCalibration(pub u32);
-
-impl SoloVoltageCalibration {
-    pub const MIN: u32 = 0xa64;
-    pub const MAX: u32 = 0xb7c;
-
-    pub fn new(value: u32) -> Self {
-        Self(value)
-    }
-
-    pub fn is_valid(&self) -> bool {
-        self.0 >= Self::MIN && self.0 <= Self::MAX
-    }
-}
-
-impl DataIdentifier for SoloVoltageCalibration {
-    const DID: u16 = 0x820a;
-    type Bytes = [u8; 4];
-
-    fn to_bytes(&self) -> Self::Bytes {
-        self.0.to_be_bytes()
-    }
-}
-
-impl TryFrom<&[u8]> for SoloVoltageCalibration {
-    type Error = DidDecodeError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let arr: [u8; 4] = bytes
-            .try_into()
-            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 4))?;
-        let value = u32::from_be_bytes(arr);
-        Ok(Self::new(value))
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CalibrationError {
-    O2OutOfRange(u32),
-    PressureOutOfRange(u32),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SoloCellCalibrationRequest {
-    /// O2 percentage  >= 70 and <= 100
-    pub o2_percent: u32,
-    /// Atmospheric pressure in millibars  >= 600 & <= 1050
-    pub atmospheric_pressure_mbar: u32,
-}
-
-impl SoloCellCalibrationRequest {
-    pub fn try_new(
-        o2_percent: u32,
-        atmospheric_pressure_mbar: u32,
-    ) -> Result<Self, CalibrationError> {
-        if !(70..=100).contains(&o2_percent) {
-            return Err(CalibrationError::O2OutOfRange(o2_percent));
-        }
-
-        if !(600..=1050).contains(&atmospheric_pressure_mbar) {
-            return Err(CalibrationError::PressureOutOfRange(
-                atmospheric_pressure_mbar,
-            ));
-        }
-
-        Ok(Self {
-            o2_percent,
-            atmospheric_pressure_mbar,
-        })
-    }
-}
-
-impl DataIdentifier for SoloCellCalibrationRequest {
-    const DID: u16 = 0x8204;
-    type Bytes = [u8; 8];
-
-    fn to_bytes(&self) -> Self::Bytes {
-        let mut result = [0u8; 8];
-        result[0..4].copy_from_slice(&self.o2_percent.to_be_bytes());
-        result[4..8].copy_from_slice(&self.atmospheric_pressure_mbar.to_be_bytes());
-        result
-    }
-}
-
-impl TryFrom<&[u8]> for SoloCellCalibrationRequest {
-    type Error = DidDecodeError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let arr: [u8; 8] = bytes
-            .try_into()
-            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 8))?;
-        Ok(Self {
-            o2_percent: u32::from_be_bytes([arr[0], arr[1], arr[2], arr[3]]),
-            atmospheric_pressure_mbar: u32::from_be_bytes([arr[4], arr[5], arr[6], arr[7]]),
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SoloCellZeroOffsets {
-    pub cells: [u32; 3],
-}
-
-impl DataIdentifier for SoloCellZeroOffsets {
-    const DID: u16 = 0x8205;
-    type Bytes = [u8; 12];
-
-    fn to_bytes(&self) -> Self::Bytes {
-        let mut result = [0u8; 12];
-        result[0..4].copy_from_slice(&self.cells[0].to_be_bytes());
-        result[4..8].copy_from_slice(&self.cells[1].to_be_bytes());
-        result[8..12].copy_from_slice(&self.cells[2].to_be_bytes());
-        result
-    }
-}
-
-impl TryFrom<&[u8]> for SoloCellZeroOffsets {
-    type Error = DidDecodeError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let arr: [u8; 12] = bytes
-            .try_into()
-            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 12))?;
-        Ok(Self {
-            cells: [
-                u32::from_be_bytes([arr[0], arr[1], arr[2], arr[3]]),
-                u32::from_be_bytes([arr[4], arr[5], arr[6], arr[7]]),
-                u32::from_be_bytes([arr[8], arr[9], arr[10], arr[11]]),
-            ],
-        })
-    }
-}
-
-/// Calibrates all 3 O2 cells by computing zero-point offset corrections
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SoloCellZeroOffsetCalibrationRequest {
-    pub expected_adc_value: u32,
-}
-
-impl DataIdentifier for SoloCellZeroOffsetCalibrationRequest {
-    const DID: u16 = 0x8206;
-    type Bytes = [u8; 4];
-
-    fn to_bytes(&self) -> Self::Bytes {
-        self.expected_adc_value.to_be_bytes()
-    }
-}
-
-impl TryFrom<&[u8]> for SoloCellZeroOffsetCalibrationRequest {
-    type Error = DidDecodeError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let arr: [u8; 4] = bytes
-            .try_into()
-            .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 4))?;
-        Ok(Self {
-            expected_adc_value: u32::from_be_bytes(arr),
-        })
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FirmwareCrc {
     pub crc: u32,
@@ -591,30 +199,427 @@ define_byte_array_did!(
     field: device_id
 );
 
-define_byte_array_did!(
-    EncryptedConfigBlob,
-    did: 0x8202,
-    len: 16,
-    field: unknown
-);
+pub mod solo {
+    use super::*;
 
-impl ReadableDid for SoloControlConfig {}
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[repr(u8)]
+    pub enum PPO2ControlMode {
+        UserSelect = 0,
+        Manual = 1,
+        OneSec = 2,
+        FiveSec = 3,
+    }
+
+    impl TryFrom<u8> for PPO2ControlMode {
+        type Error = DidDecodeError;
+
+        fn try_from(value: u8) -> Result<Self, Self::Error> {
+            match value {
+                0 => Ok(Self::UserSelect),
+                1 => Ok(Self::Manual),
+                2 => Ok(Self::OneSec),
+                3 => Ok(Self::FiveSec),
+                _ => Err(DidDecodeError::InvalidEnumValue { value }),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[repr(u8)]
+    pub enum CalibrationProcedure {
+        /// Direct calibration - immediately reads and calibrates
+        Direct = 0,
+        /// Monitored calibration - verifies stability, solenoid, and battery before calibrating
+        Monitored = 1,
+    }
+
+    impl TryFrom<u8> for CalibrationProcedure {
+        type Error = DidDecodeError;
+
+        fn try_from(value: u8) -> Result<Self, Self::Error> {
+            match value {
+                0 => Ok(Self::Direct),
+                1 => Ok(Self::Monitored),
+                _ => Err(DidDecodeError::InvalidEnumValue { value }),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum CellMode {
+        //Uses 2 oxygen sensors, PID gains Kp=1.2, max pulse 9ms
+        TwoCell,
+        //Uses 3 oxygen sensors, PID gains Kp=2.5, max pulse 14ms
+        ThreeCell,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ControlConfig {
+        pub calibration_procedure: CalibrationProcedure,
+        pub ppo2_control_mode: PPO2ControlMode,
+        pub cell_mode: CellMode,
+        pub depth_compensation_enabled: bool,
+        pub solenoid_current_min_ma: u16,
+        /// Solenoid maximum current in mA
+        pub solenoid_current_max_ma: u16,
+        /// Battery minimum voltage
+        pub battery_voltage_min: u16,
+        pub battery_voltage_doubling: bool,
+        pub reserved_bits_20_21: u8,
+        pub reserved_bits_24_31: u8,
+    }
+
+    impl DataIdentifier for ControlConfig {
+        const DID: u16 = 0x820b;
+        type Bytes = [u8; 4];
+
+        fn to_bytes(&self) -> Self::Bytes {
+            let mut config_word: u32 = 0;
+
+            if self.calibration_procedure == CalibrationProcedure::Monitored {
+                config_word |= 1;
+            } else {
+                config_word |= 2;
+            }
+
+            config_word |= (self.ppo2_control_mode as u32 & 0x3) << 2;
+
+            if self.cell_mode == CellMode::ThreeCell {
+                config_word |= 1 << 4;
+            }
+
+            if self.depth_compensation_enabled {
+                config_word |= 1 << 6;
+            } else {
+                config_word |= 2 << 6;
+            }
+
+            let sol_min_raw = (self.solenoid_current_min_ma.saturating_sub(50) / 10) & 0xF;
+            config_word |= (sol_min_raw as u32) << 8;
+
+            let sol_max_raw = (self.solenoid_current_max_ma.saturating_sub(50) / 10) & 0x1F;
+            config_word |= ((sol_max_raw & 0xF) as u32) << 12;
+            config_word |= ((sol_max_raw >> 4) as u32) << 23;
+
+            let mut batt_raw = self.battery_voltage_min;
+            if self.battery_voltage_doubling {
+                batt_raw >>= 1;
+            }
+            batt_raw = (batt_raw.saturating_sub(50) >> 1) & 0xF;
+            config_word |= (batt_raw as u32) << 16;
+
+            if self.battery_voltage_doubling {
+                config_word |= 1 << 22;
+            }
+
+            config_word |= (self.reserved_bits_20_21 as u32 & 0x3) << 20;
+            config_word |= (self.reserved_bits_24_31 as u32) << 24;
+
+            config_word.to_be_bytes()
+        }
+    }
+
+    impl TryFrom<&[u8]> for ControlConfig {
+        type Error = DidDecodeError;
+
+        fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+            let arr: [u8; 4] = bytes
+                .try_into()
+                .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 4))?;
+            let config_word = u32::from_be_bytes(arr);
+
+            let calibration_procedure = if (config_word & 0x3) == 1 {
+                CalibrationProcedure::Monitored
+            } else {
+                CalibrationProcedure::Direct
+            };
+
+            let ppo2_control_value = ((config_word >> 2) & 0x3) as u8;
+            let ppo2_control_mode = PPO2ControlMode::try_from(ppo2_control_value)?;
+
+            let cell_averaging_3cell = ((config_word >> 4) & 0x3) == 1;
+            let depth_compensation_enabled = ((config_word >> 6) & 0x3) == 1;
+
+            let sol_min_raw = ((config_word >> 8) & 0xF) as u16;
+            let solenoid_current_min_ma = 50 + (sol_min_raw * 10);
+
+            let sol_max_lo = ((config_word >> 12) & 0xF) as u16;
+            let sol_max_hi = ((config_word >> 23) & 0x1) as u16;
+            let solenoid_current_max_ma = 50 + (((sol_max_hi << 4) | sol_max_lo) * 10);
+
+            let batt_min_raw = ((config_word >> 16) & 0xF) as u16;
+            let mut battery_voltage_min = 50 + (batt_min_raw << 1);
+
+            let battery_voltage_doubling = ((config_word >> 22) & 0x1) == 1;
+            if battery_voltage_doubling {
+                battery_voltage_min <<= 1;
+            }
+
+            let cell_mode = if cell_averaging_3cell {
+                CellMode::ThreeCell
+            } else {
+                CellMode::TwoCell
+            };
+
+            let reserved_bits_20_21 = ((config_word >> 20) & 0x3) as u8;
+            let reserved_bits_24_31 = ((config_word >> 24) & 0xFF) as u8;
+
+            Ok(ControlConfig {
+                calibration_procedure,
+                ppo2_control_mode,
+                cell_mode,
+                depth_compensation_enabled,
+                solenoid_current_min_ma,
+                solenoid_current_max_ma,
+                battery_voltage_min,
+                battery_voltage_doubling,
+                reserved_bits_20_21,
+                reserved_bits_24_31,
+            })
+        }
+    }
+
+    /// O2 cell runtime calibration data (DID 0x8203)
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct CellCalibrationState {
+        pub o2_calibrations: [u32; 3],
+        pub calibration_valid: [bool; 3],
+    }
+
+    impl DataIdentifier for CellCalibrationState {
+        const DID: u16 = 0x8203;
+        type Bytes = [u8; 15];
+
+        fn to_bytes(&self) -> Self::Bytes {
+            let mut result = [0u8; 15];
+            result[0..4].copy_from_slice(&self.o2_calibrations[0].to_be_bytes());
+            result[4..8].copy_from_slice(&self.o2_calibrations[1].to_be_bytes());
+            result[8..12].copy_from_slice(&self.o2_calibrations[2].to_be_bytes());
+            result[12] = if self.calibration_valid[0] { 1 } else { 0 };
+            result[13] = if self.calibration_valid[1] { 1 } else { 0 };
+            result[14] = if self.calibration_valid[2] { 1 } else { 0 };
+            result
+        }
+    }
+
+    impl TryFrom<&[u8]> for CellCalibrationState {
+        type Error = DidDecodeError;
+
+        fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+            let arr: [u8; 15] = bytes
+                .try_into()
+                .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 15))?;
+
+            let mut calibration_valid = [false; 3];
+            for i in 0..3 {
+                calibration_valid[i] = match arr[12 + i] {
+                    0 => false,
+                    1 => true,
+                    other => return Err(DidDecodeError::InvalidEnumValue { value: other }),
+                };
+            }
+
+            Ok(Self {
+                o2_calibrations: [
+                    u32::from_be_bytes([arr[0], arr[1], arr[2], arr[3]]),
+                    u32::from_be_bytes([arr[4], arr[5], arr[6], arr[7]]),
+                    u32::from_be_bytes([arr[8], arr[9], arr[10], arr[11]]),
+                ],
+                calibration_valid,
+            })
+        }
+    }
+
+    /// ADC voltage reference calibration value
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct VoltageCalibration(pub u32);
+
+    impl VoltageCalibration {
+        pub const MIN: u32 = 0xa64;
+        pub const MAX: u32 = 0xb7c;
+
+        pub fn new(value: u32) -> Self {
+            Self(value)
+        }
+
+        pub fn is_valid(&self) -> bool {
+            self.0 >= Self::MIN && self.0 <= Self::MAX
+        }
+    }
+
+    impl DataIdentifier for VoltageCalibration {
+        const DID: u16 = 0x820a;
+        type Bytes = [u8; 4];
+
+        fn to_bytes(&self) -> Self::Bytes {
+            self.0.to_be_bytes()
+        }
+    }
+
+    impl TryFrom<&[u8]> for VoltageCalibration {
+        type Error = DidDecodeError;
+
+        fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+            let arr: [u8; 4] = bytes
+                .try_into()
+                .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 4))?;
+            let value = u32::from_be_bytes(arr);
+            Ok(Self::new(value))
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum CalibrationError {
+        O2OutOfRange(u32),
+        PressureOutOfRange(u32),
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct CellCalibrationRequest {
+        /// O2 percentage  >= 70 and <= 100
+        pub o2_percent: u32,
+        /// Atmospheric pressure in millibars  >= 600 & <= 1050
+        pub atmospheric_pressure_mbar: u32,
+    }
+
+    impl CellCalibrationRequest {
+        pub fn try_new(
+            o2_percent: u32,
+            atmospheric_pressure_mbar: u32,
+        ) -> Result<Self, CalibrationError> {
+            if !(70..=100).contains(&o2_percent) {
+                return Err(CalibrationError::O2OutOfRange(o2_percent));
+            }
+
+            if !(600..=1050).contains(&atmospheric_pressure_mbar) {
+                return Err(CalibrationError::PressureOutOfRange(
+                    atmospheric_pressure_mbar,
+                ));
+            }
+
+            Ok(Self {
+                o2_percent,
+                atmospheric_pressure_mbar,
+            })
+        }
+    }
+
+    impl DataIdentifier for CellCalibrationRequest {
+        const DID: u16 = 0x8204;
+        type Bytes = [u8; 8];
+
+        fn to_bytes(&self) -> Self::Bytes {
+            let mut result = [0u8; 8];
+            result[0..4].copy_from_slice(&self.o2_percent.to_be_bytes());
+            result[4..8].copy_from_slice(&self.atmospheric_pressure_mbar.to_be_bytes());
+            result
+        }
+    }
+
+    impl TryFrom<&[u8]> for CellCalibrationRequest {
+        type Error = DidDecodeError;
+
+        fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+            let arr: [u8; 8] = bytes
+                .try_into()
+                .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 8))?;
+            Ok(Self {
+                o2_percent: u32::from_be_bytes([arr[0], arr[1], arr[2], arr[3]]),
+                atmospheric_pressure_mbar: u32::from_be_bytes([arr[4], arr[5], arr[6], arr[7]]),
+            })
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct CellZeroOffsets {
+        pub cells: [u32; 3],
+    }
+
+    impl DataIdentifier for CellZeroOffsets {
+        const DID: u16 = 0x8205;
+        type Bytes = [u8; 12];
+
+        fn to_bytes(&self) -> Self::Bytes {
+            let mut result = [0u8; 12];
+            result[0..4].copy_from_slice(&self.cells[0].to_be_bytes());
+            result[4..8].copy_from_slice(&self.cells[1].to_be_bytes());
+            result[8..12].copy_from_slice(&self.cells[2].to_be_bytes());
+            result
+        }
+    }
+
+    impl TryFrom<&[u8]> for CellZeroOffsets {
+        type Error = DidDecodeError;
+
+        fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+            let arr: [u8; 12] = bytes
+                .try_into()
+                .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 12))?;
+            Ok(Self {
+                cells: [
+                    u32::from_be_bytes([arr[0], arr[1], arr[2], arr[3]]),
+                    u32::from_be_bytes([arr[4], arr[5], arr[6], arr[7]]),
+                    u32::from_be_bytes([arr[8], arr[9], arr[10], arr[11]]),
+                ],
+            })
+        }
+    }
+
+    /// Calibrates all 3 O2 cells by computing zero-point offset corrections
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct CellZeroOffsetCalibrationRequest {
+        pub expected_adc_value: u32,
+    }
+
+    impl DataIdentifier for CellZeroOffsetCalibrationRequest {
+        const DID: u16 = 0x8206;
+        type Bytes = [u8; 4];
+
+        fn to_bytes(&self) -> Self::Bytes {
+            self.expected_adc_value.to_be_bytes()
+        }
+    }
+
+    impl TryFrom<&[u8]> for CellZeroOffsetCalibrationRequest {
+        type Error = DidDecodeError;
+
+        fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+            let arr: [u8; 4] = bytes
+                .try_into()
+                .map_err(|_| DidDecodeError::length_mismatch(bytes.len(), 4))?;
+            Ok(Self {
+                expected_adc_value: u32::from_be_bytes(arr),
+            })
+        }
+    }
+
+    define_byte_array_did!(
+        EncryptedConfigBlob,
+        did: 0x8202,
+        len: 16,
+        field: unknown
+    );
+
+    impl ReadableDid for EncryptedConfigBlob {}
+    impl WritableDid for EncryptedConfigBlob {}
+    impl ReadableDid for CellCalibrationState {}
+    impl WritableDid for CellCalibrationRequest {}
+    impl ReadableDid for VoltageCalibration {}
+    impl WritableDid for VoltageCalibration {}
+    impl ReadableDid for CellZeroOffsets {}
+    impl WritableDid for CellZeroOffsetCalibrationRequest {}
+    impl ReadableDid for ControlConfig {}
+}
+
 impl ReadableDid for FirmwareDownloadCapability {}
 impl ReadableDid for LogUploadCapability {}
-impl ReadableDid for SoloCellCalibrationState {}
-impl WritableDid for SoloCellCalibrationRequest {}
-impl ReadableDid for SoloVoltageCalibration {}
-impl WritableDid for SoloVoltageCalibration {}
-impl ReadableDid for SoloCellZeroOffsets {}
-impl WritableDid for SoloCellZeroOffsetCalibrationRequest {}
 impl ReadableDid for FirmwareCrc {}
 impl ReadableDid for SerialNumberAscii {}
 impl ReadableDid for FirmwareVersionAscii {}
 impl ReadableDid for SerialNumber {}
 impl WritableDid for SerialNumber {}
 impl ReadableDid for DeviceId {}
-impl ReadableDid for EncryptedConfigBlob {}
-impl WritableDid for EncryptedConfigBlob {}
 
 #[cfg(test)]
 mod tests {
@@ -679,6 +684,12 @@ mod tests {
         let result = DeviceId::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
     }
+}
+
+#[cfg(test)]
+mod solo_tests {
+    use super::solo::*;
+    use crate::diag::did::DataIdentifier;
 
     #[test]
     fn test_0x8202() {
@@ -692,7 +703,7 @@ mod tests {
     fn test_0x8203() {
         // 0x8203 -> 000000B1000000B1000000A3010101
         let input = hex::decode("000000B1000000B1000000A3010101").unwrap();
-        let result = SoloCellCalibrationState::try_from(input.as_slice()).unwrap();
+        let result = CellCalibrationState::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
         assert_eq!(result.o2_calibrations[0], 0x000000B1);
         assert_eq!(result.o2_calibrations[1], 0x000000B1);
@@ -704,10 +715,10 @@ mod tests {
 
     #[test]
     fn test_0x8204_roundtrip() {
-        let request = SoloCellCalibrationRequest::try_new(98, 1013).unwrap();
+        let request = CellCalibrationRequest::try_new(98, 1013).unwrap();
 
         let bytes = request.to_bytes();
-        let decoded = SoloCellCalibrationRequest::try_from(bytes.as_ref()).unwrap();
+        let decoded = CellCalibrationRequest::try_from(bytes.as_ref()).unwrap();
 
         assert_eq!(decoded.o2_percent, 98);
         assert_eq!(decoded.atmospheric_pressure_mbar, 1013);
@@ -716,43 +727,43 @@ mod tests {
     #[test]
     fn test_calibration_validation() {
         // Valid values should succeed
-        assert!(SoloCellCalibrationRequest::try_new(70, 600).is_ok());
-        assert!(SoloCellCalibrationRequest::try_new(100, 1050).is_ok());
-        assert!(SoloCellCalibrationRequest::try_new(85, 1013).is_ok());
+        assert!(CellCalibrationRequest::try_new(70, 600).is_ok());
+        assert!(CellCalibrationRequest::try_new(100, 1050).is_ok());
+        assert!(CellCalibrationRequest::try_new(85, 1013).is_ok());
 
         // O2 out of range
         assert!(matches!(
-            SoloCellCalibrationRequest::try_new(69, 1013),
+            CellCalibrationRequest::try_new(69, 1013),
             Err(CalibrationError::O2OutOfRange(69))
         ));
         assert!(matches!(
-            SoloCellCalibrationRequest::try_new(101, 1013),
+            CellCalibrationRequest::try_new(101, 1013),
             Err(CalibrationError::O2OutOfRange(101))
         ));
         assert!(matches!(
-            SoloCellCalibrationRequest::try_new(21, 1013),
+            CellCalibrationRequest::try_new(21, 1013),
             Err(CalibrationError::O2OutOfRange(21))
         ));
 
         // Pressure out of range
         assert!(matches!(
-            SoloCellCalibrationRequest::try_new(85, 599),
+            CellCalibrationRequest::try_new(85, 599),
             Err(CalibrationError::PressureOutOfRange(599))
         ));
         assert!(matches!(
-            SoloCellCalibrationRequest::try_new(85, 1051),
+            CellCalibrationRequest::try_new(85, 1051),
             Err(CalibrationError::PressureOutOfRange(1051))
         ));
     }
 
     #[test]
     fn test_0x8206_roundtrip() {
-        let request = SoloCellZeroOffsetCalibrationRequest {
+        let request = CellZeroOffsetCalibrationRequest {
             expected_adc_value: 100,
         };
 
         let bytes = request.to_bytes();
-        let decoded = SoloCellZeroOffsetCalibrationRequest::try_from(bytes.as_ref()).unwrap();
+        let decoded = CellZeroOffsetCalibrationRequest::try_from(bytes.as_ref()).unwrap();
 
         assert_eq!(decoded.expected_adc_value, 100);
     }
@@ -761,7 +772,7 @@ mod tests {
     fn test_0x8205() {
         // 0x8205 -> 000F000200F0000288004803
         let input = hex::decode("000F000200F0000288004803").unwrap();
-        let result = SoloCellZeroOffsets::try_from(input.as_slice()).unwrap();
+        let result = CellZeroOffsets::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
 
         assert_eq!(result.cells[0], 0x000F0002); // 983042
@@ -770,44 +781,10 @@ mod tests {
     }
 
     #[test]
-    fn test_0x8209() {
-        // 0x8209 -> B8211756
-        let input = hex::decode("B8211756").unwrap();
-        let result = FirmwareCrc::try_from(input.as_slice()).unwrap();
-        assert_eq!(result.crc, 0xB8211756);
-        assert_eq!(&result.to_bytes()[..], &input[..]);
-    }
-
-    #[test]
     fn test_0x820a() {
         // 0x820a -> 30303639
         let input = hex::decode("30303639").unwrap();
-        let result = SoloVoltageCalibration::try_from(input.as_slice()).unwrap();
+        let result = VoltageCalibration::try_from(input.as_slice()).unwrap();
         assert_eq!(&result.to_bytes()[..], &input[..]);
-    }
-
-    #[test]
-    fn test_0x820b() {
-        // 0x820b -> 8AFC3656
-        let input = hex::decode("8AFC3656").unwrap();
-        let result = SoloControlConfig::try_from(input.as_slice()).unwrap();
-        assert_eq!(&result.to_bytes()[..], &input[..]);
-        assert_eq!(result.battery_voltage_min, 148);
-    }
-    #[test]
-    fn test_internal_calibration_data() {
-        // Real data from device: 000000E4000000E4000000CC010101
-        let data = hex::decode("000000E4000000E4000000CC010101").unwrap();
-        let cal_data = SoloCellCalibrationState::try_from(data.as_slice()).unwrap();
-        assert_eq!(cal_data.o2_calibrations[0], 228);
-        assert_eq!(cal_data.o2_calibrations[1], 228);
-        assert_eq!(cal_data.o2_calibrations[2], 204);
-        assert_eq!(cal_data.calibration_valid[0], true);
-        assert_eq!(cal_data.calibration_valid[1], true);
-        assert_eq!(cal_data.calibration_valid[2], true);
-
-        // Test round-trip
-        let bytes = cal_data.to_bytes();
-        assert_eq!(&bytes[..], &data[..]);
     }
 }
