@@ -102,6 +102,29 @@ pub fn parse_rfcomm_datagram(data: &[u8]) -> Result<(u8, u8, &[u8]), TransportEr
 
     Ok((src, dst, &data[3..3 + len]))
 }
+
+pub fn ble_datagram(src: u8, dst: u8, data: &[u8]) -> Vec<u8> {
+    let data_length = data.len();
+
+    if data_length > 0xFF {
+        panic!("Data too long for 1-byte length field");
+    }
+
+    let mut result = Vec::with_capacity(3 + data_length);
+
+    result.push(0x01);
+    result.push(0x00);
+    result.push(src);
+    result.push(dst);
+    result.push(data_length as u8);
+    result.extend_from_slice(data);
+    result
+}
+
+pub fn parse_ble_datagram(data: &[u8]) -> Result<(u8, u8, &[u8]), TransportError> {
+    parse_rfcomm_datagram(&data[2..])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

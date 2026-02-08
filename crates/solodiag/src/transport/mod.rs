@@ -63,3 +63,5 @@ pub use socketcan::SocketCanIsoTpSessionUdsSession;
 // Cross-platform RFCOMM transport
 mod rfcomm;
 pub use rfcomm::RfcommGatewayTransport;
+mod ble;
+pub use ble::BleTransport;
