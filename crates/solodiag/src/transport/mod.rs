@@ -51,6 +51,9 @@ pub fn uds_error_to_anyhow(
     }
 }
 
+mod bt;
+pub use bt::*;
+
 // Linux-only SocketCAN transport
 #[cfg(target_os = "linux")]
 mod socketcan;
@@ -60,3 +63,5 @@ pub use socketcan::SocketCanIsoTpSessionUdsSession;
 // Cross-platform RFCOMM transport
 mod rfcomm;
 pub use rfcomm::RfcommGatewayTransport;
+mod ble;
+pub use ble::BleTransport;

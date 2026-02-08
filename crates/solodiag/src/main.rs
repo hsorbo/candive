@@ -17,9 +17,9 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, Write};
 use std::path::PathBuf;
 
-use crate::transport::RfcommGatewayTransport;
 #[cfg(target_os = "linux")]
 use crate::transport::SocketCanIsoTpSessionUdsSession;
+use crate::transport::{BleTransport, RfcommGatewayTransport};
 
 mod msgformat;
 mod transport;
@@ -28,6 +28,7 @@ enum Transport {
     #[cfg(target_os = "linux")]
     Can(SocketCanIsoTpSessionUdsSession),
     Rfcomm(RfcommGatewayTransport),
+    Ble(BleTransport),
 }
 
 impl candive::uds::client::UdsTransport for Transport {
@@ -38,6 +39,7 @@ impl candive::uds::client::UdsTransport for Transport {
             #[cfg(target_os = "linux")]
             Transport::Can(t) => t.request(req, resp_buf),
             Transport::Rfcomm(t) => t.request(req, resp_buf),
+            Transport::Ble(t) => t.request(req, resp_buf),
         }
     }
 }
@@ -73,9 +75,18 @@ fn parse_transport_uri(uri: &str, src: u8, dst: u8) -> CmdResult<Transport> {
         }
 
         Ok(Transport::Rfcomm(session))
+    } else if let Some(device_id_part) = uri.strip_prefix("ble://") {
+        let device_id = if device_id_part.is_empty() {
+            None
+        } else {
+            Some(device_id_part.to_string())
+        };
+        let session = BleTransport::new(src, dst, device_id)
+            .map_err(|e| anyhow!("Failed to create BLE transport: {:?}", e))?;
+        Ok(Transport::Ble(session))
     } else {
         Err(anyhow!(
-            "Invalid transport URI. Use can://<interface> or rfcomm://<port>"
+            "Invalid transport URI. Use can://<interface>, rfcomm://<port>, or ble://"
         ))
     }
 }
