@@ -51,6 +51,9 @@ pub fn uds_error_to_anyhow(
     }
 }
 
+mod bt;
+pub use bt::*;
+
 // Linux-only SocketCAN transport
 #[cfg(target_os = "linux")]
 mod socketcan;
