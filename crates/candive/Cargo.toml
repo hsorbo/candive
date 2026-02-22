@@ -11,8 +11,10 @@ description = "DiveCAN parser"
 default = ["diagnostics", "uds"]
 diagnostics = []
 uds = []
+defmt = ["dep:defmt"]
 
 [dependencies]
+defmt = { version = "0.3", optional = true }
 
 [dev-dependencies]
 hex = "0.4.3"

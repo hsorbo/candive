@@ -1,4 +1,5 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DiveCanId {
     pub src: u8,
     pub dst: u8,
@@ -50,6 +51,7 @@ pub struct DiveCanFrame {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum FrameError {
     InvalidDlc(u8),
 }
@@ -76,6 +78,7 @@ impl DiveCanFrame {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct CellsActive(u8);
 
 impl CellsActive {
@@ -97,6 +100,7 @@ impl CellsActive {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Consensus {
     NotCalibrated,
     NoActiveCells,
@@ -122,6 +126,7 @@ impl Consensus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CalStatusCode {
     Success,
     Ack,
@@ -162,6 +167,7 @@ impl CalStatusCode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum VoltageAlert {
     UnderVoltage,
     // Will only be sent when solenoid is active
@@ -192,6 +198,7 @@ impl VoltageAlert {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CurrentAlert {
     // Drawing less than 70 while solenoid is active
     UnderCurrent,
@@ -223,6 +230,7 @@ impl CurrentAlert {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ShutdownReason {
     UserInitiated,
     Timeout,
@@ -248,12 +256,14 @@ impl ShutdownReason {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DecodeError {
     UnknownKind { kind: u8 },
     DlcMismatch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Alert {
     //TODO: in use, seen 1/2
     unknown: u8,
@@ -284,6 +294,7 @@ impl Alert {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Msg {
     Id {
         manufacturer: u8,
